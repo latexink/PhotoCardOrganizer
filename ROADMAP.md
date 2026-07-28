@@ -205,6 +205,51 @@ every item will ship in the next release.
   time, and idle memory. Treat this as lower priority than media integrity and
   storage efficiency.
 
+## Program and Packaging Consolidation
+
+- Audit developer launchers, build wrappers, generated resources, and legacy
+  maintenance scripts. Remove superseded or duplicate files and keep the
+  project root focused on the few entry points a developer actually uses.
+- Keep one canonical source of truth for the application version, icons,
+  bundled manual, changelog, and installer metadata. Generate platform
+  resources from it instead of maintaining matching copies by hand.
+- Give the installed Windows application one primary executable, one internal
+  runtime/resources directory, and one registered maintenance/uninstall path.
+  Do not install source-only batch launchers or duplicate versioned program
+  folders.
+- Make the single Windows installer executable the maintenance front door.
+  Offer Install when the app is absent and Repair, Update, Uninstall, or Cancel
+  when an installation is detected. Show the installed and packaged versions,
+  the selected operation, affected program location, shortcuts, and preserved
+  data before enabling the final confirmation.
+- Define Update as an offline upgrade to the version bundled in the installer
+  until online update checks are implemented. Repair should verify and replace
+  missing or changed installer-owned program files without resetting user
+  configuration.
+- Detect a running application before maintenance, request a graceful close,
+  and verify the selected operation afterward. Show an explicit success or
+  failure result and retain a diagnostic log the user can open.
+- Keep settings and application logs by default during uninstall, with a
+  separate confirmation for removing them. Never offer the installer a path to
+  delete imported media, card identity/history data, or library state.
+- Build the Windows and Linux packages from a shared payload manifest while
+  retaining the genuinely platform-specific installer and launcher code each
+  operating system requires.
+- Record every installer-owned program file so repair and upgrade can replace
+  obsolete managed files and uninstall can remove them without touching
+  settings, transfer history, library state, card identities, or media.
+- Keep the repository private and do not apply a project license until the
+  owner completes an explicit licensing review. Before any public source
+  release, select an OSI-approved license, add matching package metadata, and
+  document how contributions may be relicensed.
+- Audit every bundled dependency before the next distributed package and
+  include required third-party notices, license texts, source-access details,
+  and relinking rights. Revisit GPL for the desktop and AGPL for a separately
+  hosted remote-sync service if application-managed networking is introduced.
+- Consolidate redundant files, not unrelated responsibilities. Keep focused
+  source modules and split oversized UI or workflow modules when that improves
+  maintainability rather than combining code merely to reduce the file count.
+
 ## General Options and Interface Themes
 
 - Begin the next iteration with a focused styling review.
@@ -221,9 +266,19 @@ every item will ship in the next release.
   and high-contrast themes.
 - Store the theme per client so portable library settings do not overwrite a
   computer's display preference.
+- Add optional sound notifications during the same interface iteration, with a
+  master toggle, volume control, sound preview, and separate choices for card
+  connection, operation completion, attention required, and failure. Avoid
+  per-file sounds and coalesce repeated background events.
+- Provide quiet hours and an option to use native Windows or Linux notification
+  sounds. Store audio preferences per client rather than in portable library
+  settings.
+- Always pair sounds with visible tray, progress-center, and Activity status.
+  Never make a transfer warning, move confirmation, or failure understandable
+  only through audio.
 - Verify every theme on Windows and Linux, including dropdown indicators,
-  progress states, dialogs, conflict previews, disabled controls, and keyboard
-  focus visibility.
+  progress states, dialogs, conflict previews, disabled controls, keyboard
+  focus visibility, notification sounds, mute state, and quiet hours.
 
 ## Remote Transport
 
