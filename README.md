@@ -1,50 +1,37 @@
 # Photo Card Organizer
 
-Photo Card Organizer is a cross-platform Python and PySide6 desktop/tray application for importing camera media from identified SD cards and drives. Copy is the default. A move is implemented as copy, checksum verification, portable and local history writes, and only then source deletion.
+Photo Card Organizer is a Windows and Linux desktop/tray application for safely
+importing camera cards, folders, and existing photo collections into organized
+libraries. Copy is the default; optional moves verify every destination and
+required session record before deleting a source file.
 
-The current illustrated guide is [PhotoCardOrganizer-0.7.0-User-Guide.pdf](output/pdf/PhotoCardOrganizer-0.7.0-User-Guide.pdf). Its filename, cover, headers, and PDF metadata are generated from the project version and it is included in packaged releases. The final `Help & about` page opens the same bundled guide from inside the application.
+## Highlights
 
-The cumulative [CHANGELOG.md](CHANGELOG.md) includes every preserved release from 0.1.0 onward. It is bundled with Windows and Linux packages and opens from the same `Help & about` page. Candidate work after this release is recorded separately in [ROADMAP.md](ROADMAP.md).
+- Import multiple camera cards, ordinary folders, and varied existing libraries.
+- Organize JPEG, RAW, video, and sidecar files from EXIF/XMP metadata.
+- Use independent folder rules for date, month, camera, location, rating, media,
+  named shoots, and high-confidence long-exposure brackets.
+- Manage multiple local, removable, or OS-mounted network libraries and backups.
+- Monitor retained Digest Inboxes, travel libraries, and shared USB/SMB/cloud
+  folders without repeatedly copying unchanged files.
+- Preserve exact duplicates and filename conflicts for paged, side-by-side review.
+- Export individual captures or complete JPEG/RAW/sidecar and sequence groups.
+- Keep matching portable and local per-session records with cryptographic checksums.
+- Protect free-space reserves, interrupted work, migrations, and required replicas.
+- Run through a dark PySide6 interface, system tray monitor, or Windows/Linux CLI.
 
-Version 0.7.0 supports:
+## Release And Documentation
 
-- Windows and Linux desktop operation
-- A Windows 11-inspired dark interface with clear workflow stages and field tooltips
-- A lightweight user-session tray agent using the native Qt system tray
-- One per-user application instance; later launches restore and focus the existing window
-- Multiple named local, mounted-network, and removable primary libraries with a selectable default
-- Multi-select card imports through one reviewed, sequential queue with a separate session per card
-- JPEG, RAW, video, and sidecar classes with customizable extensions
-- EXIF/XMP date, camera, rating, and GPS metadata
-- Independent folder rules for every media class
-- Standalone Month levels plus optional high-confidence long-exposure bracket folders
-- Per-import Wedding, Client Shoot, Trip, and safe custom destination routes
-- Optional GPS-to-place-name lookup with a local cache
-- Root-level card identity folders
-- One portable record file per transfer session
-- Separate SHA-256, SHA-512, or BLAKE2b checksum files
-- Matching session/checksum records in the destination library
-- A guided Source, Organize, and Review workflow for arbitrary existing-library imports
-- Explicit read-only structure detection with up to twelve editable source levels, clear preview limits, and stale-mapping invalidation
-- Retained Digest Inboxes for mixed legacy folders, removable drives, network paths, and synchronized cloud folders
-- Copy-only automatic digestion plus manually confirmed verified move and per-file digest state
-- Retained copy-only travel libraries for repeat laptop-to-desktop reconciliation, separated from shared hubs by focused tabs
-- Shared Transfer Hubs on removable USB drives, SMB/NAS paths, mounted drives, or locally synchronized cloud folders
-- Per-client producer channels, monitored catch clients, and local/shared digestion receipts
-- Verified offline hub backfill when a travel client reconnects
-- Editing exports for individual, multiple, bracket/burst, and interval-sequence captures
-- JPEG/RAW/sidecar capture cohesion and SHA-256 export-session records
-- Retained per-card profiles that remain editable while a card is offline
-- Multiple required or optional backup/clone destinations with checksum verification
-- Portable client-settings export/import without machine-specific paths
-- Exact-content and same-name conflict preservation with paged, searchable, multi-select side-by-side review
-- Source and destination free-space safeguards
-- A local SQLite import manifest, pending-work ledger, and conflict index
-- A clearly named, per-user Windows installer/uninstaller with repair, upgrade, and Start Menu uninstall paths
-- Linux AppImage and Debian packages with the full command-line interface
-- Versioned configuration migration with a backup of older settings before conversion
-- Versioned per-library metadata with atomic, backed-up, resumable migration
-- Multi-resolution taskbar/tray icons plus in-app versioned manual and changelog viewers
+- [Release downloads](https://github.com/latexink/PhotoCardOrganizer/releases)
+- [Version 0.7.0 user guide](output/pdf/PhotoCardOrganizer-0.7.0-User-Guide.pdf)
+- [Changelog](CHANGELOG.md)
+- [Roadmap](ROADMAP.md)
+- [Release build and verification](PACKAGING.md)
+
+Version 0.7.0 is an unsigned private preview.
+
+<details>
+<summary><strong>Technical and workflow reference</strong></summary>
 
 ## Source Layout
 
@@ -316,3 +303,5 @@ python -m unittest discover -s tests -v
 The suite exercises mixed media, EXIF organization, shared history across computers, folder recursion, retained card/travel/Digest Inbox profiles, verified moves, configurable SHA-512 logs, matching local records, required and optional replicas, transfer-hub publication/catch/receipts/backfill, digest repeat safety and background polling, editing export, capture grouping, retry resumption, exact and filename conflicts, large conflict paging/search/bulk review, portable settings, fallback destinations, hard-space refusal, transient I/O retries, source mutation, destination races, inaccessible network paths, future timestamps, multi-card Qt selection, taskbar icon assets, UI tooltips, existing-structure detection, and cross-process single-instance activation.
 
 Release build and verification instructions are in [PACKAGING.md](PACKAGING.md).
+
+</details>
