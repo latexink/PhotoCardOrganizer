@@ -105,6 +105,46 @@ every item will ship in the next release.
   that it creates a card identity package or requires users to copy internal
   files onto cards manually.
 
+## Guided Setup Wizards
+
+- Target the complete wizard set for a minor feature release such as `0.8.0`;
+  keep `0.7.1` focused on behavior-compatible maintenance and performance work.
+  The first-run and Add library wizard may ship first if the work is staged.
+- Show an optional first-run wizard when no managed library exists. Guide the
+  user through naming the library, selecting or creating its destination,
+  choosing local/removable/OS-mounted network storage, and confirming that the
+  folder is suitable before initializing `.photocard-organizer`.
+- Offer the same Add library wizard from Library Management at any time. Prefill
+  known settings when adopting an existing managed library, and clearly
+  distinguish creating metadata from importing or reorganizing media.
+- Add a folder-import wizard for ordinary folders, varied existing libraries,
+  Digest Inboxes, travel sources, and shared transfer folders. Let one session
+  add and review multiple source folders without starting an import
+  prematurely.
+- Use a logical progression: source and scan scope, media types, destination
+  library and optional named route, detected structure, organization rules,
+  duplicate/conflict policy, backups and free-space limits, monitoring, and
+  final review.
+- Present safe recommended defaults first and place infrequent identifiers,
+  templates, checksum choices, and migration controls under Advanced sections.
+  Keep field names plain and provide focused hover help.
+- Provide read-only structure detection and representative input-to-output path
+  examples before saving. The final summary must show every source,
+  destination, enabled media class, organization rule, monitoring choice, and
+  whether the operation copies, performs a verified move, or only creates a
+  retained profile.
+- Do not change files, initialize library metadata, or begin monitoring until
+  the final confirmation. A move must retain its additional warning and
+  explicit confirmation.
+- Allow wizard choices to be saved as named presets or retained source
+  profiles. Returning users should be able to select a preset, review only the
+  changed fields, and proceed through a compact fast path.
+- Make Back, Cancel, and resume behavior reliable. Cancel before confirmation
+  must leave no partial library, identity, import, or monitoring state; longer
+  analysis should be cancellable without discarding already reviewed choices.
+- Keep direct expert controls available outside the wizards. Wizards should
+  improve discovery and first-time setup without making repeat imports slower.
+
 ## Efficient Source Monitoring
 
 - Split monitoring into a lightweight presence check and a media scan. The
