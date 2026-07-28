@@ -1,0 +1,42 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and release output
+build/
+dist/
+artifacts/
+tmp/
+*.spec
+
+# Local application and transfer state
+.photocard/
+.photocard-organizer/
+.photocard-folder-import-disabled
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.partial
+*.log
+config.json
+PhotoCardOrganizer-client-settings.json
+backups/
+
+# Local tools and operating-system metadata
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

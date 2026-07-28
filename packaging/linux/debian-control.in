@@ -1,0 +1,11 @@
+Package: photo-card-organizer
+Version: @VERSION@
+Section: graphics
+Priority: optional
+Architecture: @ARCH@
+Installed-Size: @INSTALLED_SIZE@
+Maintainer: Photo Card Organizer <noreply@localhost>
+Depends: libc6 (>= 2.31), libdbus-1-3, libegl1, libgl1, libglib2.0-0, libx11-6, libxkbcommon0, libxkbcommon-x11-0, libxcb1, libxcb-cursor0
+Description: Verified camera-card media organizer
+ Photo Card Organizer monitors identified camera cards and imports photos,
+ RAW files, videos, and sidecars into configurable library structures.

@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "id": "canon-r5-a",
+  "name": "Canon R5 Card A",
+  "enabled": true,
+  "action": "copy",
+  "source_folders": [
+    "DCIM"
+  ],
+  "destination_prefix": "",
+  "camera_name": "",
+  "delete_empty_folders_after_move": false
+}

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+
+APPDIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export PHOTO_CARD_ORGANIZER_PACKAGE_KIND=appimage
+exec "$APPDIR/usr/lib/photo-card-organizer/PhotoCardOrganizer" "$@"

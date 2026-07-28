@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+export PHOTO_CARD_ORGANIZER_PACKAGE_KIND=deb
+exec /usr/lib/photo-card-organizer/PhotoCardOrganizer "$@"

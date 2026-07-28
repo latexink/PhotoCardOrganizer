@@ -1,0 +1,236 @@
+{
+  "schema": 5,
+  "destination_root": "~/Pictures/Photo Card Library",
+  "default_library_id": "main-library",
+  "library_destinations": [
+    {
+      "id": "main-library",
+      "name": "Main Library",
+      "root": "~/Pictures/Photo Card Library",
+      "kind": "local",
+      "storage_profile": "auto",
+      "enabled": true
+    }
+  ],
+  "identification": {
+    "folder_name": ".photocard",
+    "identity_filename": "identity.json",
+    "history_folder_name": "transfers",
+    "history_folder_segments": [
+      "{date:%Y}",
+      "{date:%Y-%m}"
+    ],
+    "session_filename_template": "{date:%Y-%m-%d_%H-%M-%S}_{card}_{computer}_{session}.jsonl",
+    "checksum_filename_template": "{date:%Y-%m-%d_%H-%M-%S}_{card}_{computer}_{session}.{algorithm}",
+    "shared_history": true,
+    "require_log_before_source_delete": true,
+    "configured_roots": [],
+    "auto_detect": true,
+    "linux_mount_bases": [
+      "/media",
+      "/run/media",
+      "/mnt"
+    ]
+  },
+  "instance": {
+    "id": "",
+    "name": "",
+    "library_id": "main-library"
+  },
+  "local_history": {
+    "enabled": true,
+    "directory": "",
+    "require_before_source_delete": true
+  },
+  "card_profiles": [],
+  "travel_libraries": [
+    {
+      "id": "field-laptop",
+      "name": "Field Laptop Library",
+      "root": "\\\\FIELD-LAPTOP\\Pictures\\Travel Library",
+      "enabled": false,
+      "include_subfolders": true,
+      "destination_prefix": "",
+      "camera_name": ""
+    }
+  ],
+  "transfer_hubs": [
+    {
+      "id": "family-transfer-hub",
+      "name": "Family Transfer Hub",
+      "root": "\\\\NAS\\Photo Transfer Hub",
+      "enabled": false,
+      "role": "catch",
+      "producer_channel": "",
+      "required": false,
+      "auto_catch": false,
+      "poll_seconds": 60.0,
+      "write_receipts": true,
+      "conflict_policy": "block"
+    }
+  ],
+  "digest_inboxes": [
+    {
+      "id": "legacy-drop",
+      "name": "Legacy Drop",
+      "root": "D:/Incoming Photos",
+      "enabled": false,
+      "include_subfolders": true,
+      "destination_prefix": "",
+      "camera_name": "",
+      "action": "copy",
+      "auto_digest": false,
+      "poll_seconds": 60.0
+    }
+  ],
+  "replica_destinations": [
+    {
+      "id": "onsite-backup",
+      "name": "Onsite Backup",
+      "root": "D:/Photo Backup",
+      "enabled": false,
+      "required": true,
+      "include_history": true,
+      "conflict_policy": "block"
+    }
+  ],
+  "monitor": {
+    "poll_seconds": 5,
+    "settle_seconds": 3,
+    "start_minimized": false
+  },
+  "maintenance": {
+    "backup_before_migration": true
+  },
+  "organization": {
+    "long_exposure_brackets": {
+      "enabled": false,
+      "folder_name": "Long Exposure Brackets",
+      "minimum_group_size": 3,
+      "maximum_gap_seconds": 30.0,
+      "minimum_long_exposure_seconds": 1.0
+    }
+  },
+  "safety": {
+    "default_action": "copy",
+    "confirm_destructive_actions": true,
+    "copy_verification": "size",
+    "move_checksum_algorithm": "sha256",
+    "replica_verification": "sha256",
+    "minimum_destination_free_percent": 10.0,
+    "minimum_destination_free_gb": 5.0,
+    "warn_source_free_percent": 10.0,
+    "conflict_policy": "rename",
+    "exact_duplicate_policy": "rename",
+    "conflict_filename_appendage": "_{number}",
+    "conflict_folder": "Conflicts",
+    "manual_conflict_prompt": true,
+    "manual_duplicate_prompt": false,
+    "space_policy": "fallback_then_block",
+    "manual_space_prompt": true,
+    "fallback_destination_roots": [],
+    "file_error_policy": "retry_then_continue",
+    "manual_error_prompt": true,
+    "io_retry_count": 2,
+    "io_retry_delay_seconds": 1.0
+  },
+  "location": {
+    "online_place_names": false,
+    "provider": "nominatim",
+    "user_agent": "PhotoCardOrganizer/0.7",
+    "request_timeout_seconds": 8,
+    "coordinate_precision": 4
+  },
+  "media_rules": {
+    "photo": {
+      "enabled": true,
+      "extensions": [
+        ".jpg",
+        ".jpeg",
+        ".jpe",
+        ".tif",
+        ".tiff",
+        ".heic"
+      ],
+      "folder_segments": [
+        "Photos",
+        "{date:%Y}",
+        "{date:%Y-%m-%d}",
+        "{camera}"
+      ],
+      "filename_template": "{original}"
+    },
+    "raw": {
+      "enabled": true,
+      "extensions": [
+        ".3fr",
+        ".arw",
+        ".cr2",
+        ".cr3",
+        ".dng",
+        ".erf",
+        ".fff",
+        ".iiq",
+        ".kdc",
+        ".mef",
+        ".mos",
+        ".mrw",
+        ".nef",
+        ".nrw",
+        ".orf",
+        ".pef",
+        ".raf",
+        ".raw",
+        ".rw2",
+        ".rwl",
+        ".sr2",
+        ".srf",
+        ".x3f"
+      ],
+      "folder_segments": [
+        "RAW",
+        "{date:%Y}",
+        "{date:%Y-%m-%d}",
+        "{camera}"
+      ],
+      "filename_template": "{original}"
+    },
+    "video": {
+      "enabled": true,
+      "extensions": [
+        ".3gp",
+        ".avi",
+        ".m2ts",
+        ".m4v",
+        ".mkv",
+        ".mov",
+        ".mp4",
+        ".mts"
+      ],
+      "folder_segments": [
+        "Videos",
+        "{date:%Y}",
+        "{date:%Y-%m-%d}",
+        "{camera}"
+      ],
+      "filename_template": "{original}"
+    },
+    "sidecar": {
+      "enabled": true,
+      "extensions": [
+        ".aae",
+        ".dop",
+        ".pp3",
+        ".thm",
+        ".xmp"
+      ],
+      "folder_segments": [
+        "Sidecars",
+        "{date:%Y}",
+        "{date:%Y-%m-%d}",
+        "{camera}"
+      ],
+      "filename_template": "{original}"
+    }
+  }
+}

@@ -1,0 +1,234 @@
+# Roadmap
+
+This file records candidate work after version 0.7.0. It is not a promise that
+every item will ship in the next release.
+
+## Proposed Release Sequence
+
+- Use version 0.7.1 for behavior-compatible maintenance: efficient monitoring,
+  scan-plan reuse, metadata and manifest batching, cached storage status, and
+  responsive background UI work. Do not require a library schema migration for
+  this release.
+- Use version 0.8.0 for architectural changes: an incremental library catalog,
+  network-safe multi-client state coordination, and virtualized large-library
+  views. Migrate metadata explicitly, atomically, and with backups while
+  preserving compatibility with older records.
+- Add repeatable performance fixtures for a large card, a mixed existing
+  library, a sleeping platter destination, and a high-latency mounted library.
+  Record scan count, bytes read, database transactions, drive probes, elapsed
+  time, and peak memory so each optimization is demonstrated rather than
+  assumed.
+
+## Content-Aware Library Digestion
+
+- Add a library-wide content fingerprint catalog so identical media can be
+  recognized even when it arrives with a different filename or historical
+  folder structure.
+- Use a size-first candidate lookup and SHA-256 confirmation before treating
+  content as identical.
+- Record an already-present result without creating another physical copy.
+- Preserve same-name, different-content files through the configured suffix or
+  organized conflict-folder policy.
+- Keep JPEG, RAW, video, and sidecar capture sets together while reporting new,
+  already-present, and conflict counts in the preflight summary.
+
+## Library Reorganization
+
+- Add an explicit Reorganize library action to Library Management when saved
+  organization rules differ from a library's recorded layout. Saving settings
+  alone must never move existing media.
+- Make the final reviewed action Save settings + Reorganize. Atomically save
+  the organization options and write an immutable settings snapshot into the
+  operation journal before changing media. Process the entire operation from
+  that snapshot; if either commit fails, make no file changes.
+- Add a read-only Preview organization button beside the organization rules.
+  Show representative current path to proposed path mappings, filename
+  changes, matched rules, unchanged files, and likely conflicts without
+  writing media, settings, history, or manifests. Clearly state the sample
+  size and whether the preview was truncated.
+- Let the full reorganization wizard build a complete dry-run plan from the
+  reviewed settings snapshot before enabling Save settings + Reorganize.
+- Let the user scope the operation by named library, folder, date range, camera,
+  rating, or media type.
+- Show a dry-run plan before changes, including proposed paths, unchanged
+  files, exact duplicates, conflicts, temporary and final space requirements,
+  unavailable destinations, and files requiring review.
+- Default to a staged copy-and-verify operation. Offer a space-efficient move
+  only after an additional warning and confirmation, using atomic same-volume
+  renames where possible and checksum verification where copying is required.
+- Keep capture sets, sidecars, videos, watermarked derivatives, and transfer
+  records associated while reorganizing.
+- Write a versioned, resumable operation journal under
+  `.photocard-organizer`, plus a matching local record. Support pause, restart
+  recovery, and rollback where the completed operations make rollback safe.
+- Never overwrite a destination. Route different-content collisions through
+  the normal suffix, conflict-folder, or interactive review workflow.
+- Plan destination writes in stable order to reduce unnecessary seek activity
+  on platter drives.
+
+## Watermarked Derivatives
+
+- Keep ingested masters and source files immutable.
+- Support optional text, PNG, and safely rendered SVG watermarks.
+- Provide position, opacity, image-relative scale, margins, JPEG quality,
+  metadata-retention, and preview controls.
+- Add per-Digest-Inbox presets for local libraries and OS-mounted remote
+  destinations.
+- Offer export modes for no watermark, watermarked derivative only, or original
+  plus watermarked derivative.
+- Allow same-library subfolders, separate local folders, and mounted network
+  folders, with normal conflict, free-space, verification, and session-record
+  behavior.
+- Reject SVG scripts, external resources, and excessive render dimensions.
+
+## Card Onboarding Clarity
+
+- Label the card or drive root as the current Windows drive letter or Linux
+  mount location, not as an identity. Explain that it may change after
+  reconnecting the same card.
+- Generate a unique stable card ID automatically during normal onboarding and
+  show it in the final review. Put manual ID editing behind an Advanced
+  control.
+- Never derive the stable ID from a drive letter. Continue discovering cards
+  by reading their root `.photocard/identity.json` marker across available
+  drive letters and mount points.
+- Keep the stable ID read-only after onboarding unless a dedicated identity
+  migration workflow safely updates retained profiles and historical indexes.
+- Replace the ambiguous Add offline card action with an Advanced pending-card
+  profile workflow. State plainly that a pending profile is stored only on the
+  current client and does not export or write files to a disconnected card.
+- Let connected-card onboarding select a pending profile, review its settings,
+  and write the root identity only after confirmation. Existing disconnected
+  cards that already have identities should appear automatically as retained
+  profiles and should not require a separate Add action.
+- Keep portable settings export focused on client configuration. Do not imply
+  that it creates a card identity package or requires users to copy internal
+  files onto cards manually.
+
+## Efficient Source Monitoring
+
+- Split monitoring into a lightweight presence check and a media scan. The
+  regular 30-second poll should enumerate mount roots and read only the
+  `.photocard/identity.json` marker needed to recognize connected cards.
+- Prefer Windows device-arrival/removal notifications and Linux mount events
+  over periodic filesystem probes. Do not touch unchanged fixed-volume roots
+  merely to confirm that they are still present.
+- Exclude ordinary library destinations and other fixed disks from automatic
+  card discovery unless they are explicitly configured as monitored sources.
+- Do not recursively rescan an unchanged card on every presence poll. Run a
+  media scan when a card is newly connected or reconnected, its retained
+  source settings change, the user selects Scan now, or a watched source folder
+  reports a change.
+- Use debounced Windows and Linux filesystem notifications while a card remains
+  connected so files added by a tethered camera or another application are
+  still discovered after the initial connection scan.
+- Provide a configurable, low-frequency fallback rescan for missed filesystem
+  events and filesystems without reliable notifications. Make avoiding wake-up
+  of sleeping platter drives the default.
+- Track connection generations so removal and reinsertion at the same drive
+  letter or mount path still triggers a new scan.
+- Cache free-space and availability values instead of refreshing them on every
+  monitor or dashboard tick. Refresh a platter destination for an explicit
+  status request, enabled operation, or transfer preflight, when waking it is
+  actually necessary.
+- Show separate status times for the last presence check and last completed
+  media scan. Keep card scans sequential by default to avoid unnecessary
+  platter-drive contention.
+
+## Version 0.7.1 Performance Maintenance
+
+- Build one immutable scan plan per operation and reuse it for preview,
+  confirmation, digest classification, and execution. Do not walk and stat the
+  same source tree again when the reviewed plan is still valid; revalidate each
+  source immediately before it is changed.
+- Keep one explicitly closed manifest session per operation, use bulk lookups
+  and bounded transactions, and check the local manifest before lazily loading
+  portable card history. Cache immutable portable session files by filename,
+  size, and modified time without rewriting their audit records.
+- Reuse the digest plan during execution instead of scanning the source a
+  second time. Batch digest status updates while retaining resumable item-level
+  state.
+- Keep a persistent ExifTool worker or use batch mode, cache its resolved
+  executable path, and invoke secondary EXIF readers only for fields that are
+  still missing. Cache metadata by canonical path, size, and modified time for
+  reuse by import, preview, conflict review, and export.
+- Compare file sizes before hashing possible duplicates. Hash the source while
+  streaming a copy, verify the completed destination with one read, and reuse
+  the resulting content hash for replicas and transfer records. Never weaken
+  the verification or durable-record requirements before a move deletes its
+  source.
+- Preflight aggregate temporary and final space for the reviewed plan. Cache
+  capacity during an operation, then revalidate at configurable thresholds and
+  before a hard limit instead of probing every destination for every file.
+- Cache created destination directories, clean abandoned partials once per
+  touched directory, and reserve conflict names per directory in memory while
+  retaining an atomic no-overwrite check at commit time.
+- Make each library's storage profile operational. Favor a single sequential
+  write queue and deferred status probes for HDDs, bounded metadata and hash
+  concurrency for SSDs, and conservative batched operations for network
+  destinations.
+- Move library availability, capacity, metadata-status, and image-preview work
+  off the UI thread. Use cancellable workers, bounded thumbnail decoding, and
+  cached status so an offline share or large image cannot freeze navigation.
+- Prevent system sleep during an active verified transfer using the native
+  Windows and Linux inhibition mechanisms, then always release the inhibition
+  when the operation finishes, fails, or is cancelled.
+- Aggregate repetitive success notifications in the UI while retaining
+  detailed per-file records on disk. Keep pause and cancel boundaries between
+  files so partial work remains recoverable.
+
+## Version 0.8.0 Library Scalability
+
+- Add an incremental library catalog keyed by stable library identity,
+  canonical relative path, size, and modified time. Re-extract metadata or
+  content hashes only for new or changed entries, and reuse the catalog for
+  digest, export, reorganization, and duplicate detection.
+- Do not place SQLite WAL state directly on SMB or other network filesystems.
+  Use a client-local transactional index backed by canonical append-only
+  library records, or an explicitly leased single-writer design, with defined
+  recovery and multi-client conflict rules.
+- Replace unbounded table population with paged or virtualized item models for
+  large catalogs, activity history, digest queues, and conflict review.
+  Preserve stable selection and filtering while pages load.
+- Queue work by physical source and destination so simultaneous jobs do not
+  thrash one platter drive. Permit bounded parallelism only when the storage
+  profiles and independent devices make it beneficial.
+- Detect cloud placeholders or recall-on-access files where the operating
+  system exposes that state. Include required downloads and quota impact in
+  preflight instead of silently hydrating an entire cloud-backed library.
+- Deduplicate reverse-geocoding requests by coordinate bucket, share a
+  client-local cache across libraries, and negative-cache temporary failures
+  with an expiry. Skip geocoding entirely when no active organization rule
+  needs a place name.
+- After functional packaging tests, prune unused Qt modules and translations
+  and defer nonessential page initialization to reduce installer size, startup
+  time, and idle memory. Treat this as lower priority than media integrity and
+  storage efficiency.
+
+## General Options and Interface Themes
+
+- Begin the next iteration with a focused styling review.
+- Add a dedicated General options tab that consolidates app-wide settings
+  currently scattered across the interface, with one authoritative control for
+  each option.
+- Place appearance, startup and tray behavior, monitoring defaults, and
+  maintenance preferences there. Keep library destinations, organization
+  rules, transfer safety, and conflict behavior in their focused sections.
+- Use 30 seconds as the monitoring interval for new clients. Keep it
+  configurable, preserve existing client values during upgrades, and retain
+  explicit per-source overrides.
+- Keep the polished dark theme as the default and add selectable system, light,
+  and high-contrast themes.
+- Store the theme per client so portable library settings do not overwrite a
+  computer's display preference.
+- Verify every theme on Windows and Linux, including dropdown indicators,
+  progress states, dialogs, conflict previews, disabled controls, and keyboard
+  focus visibility.
+
+## Remote Transport
+
+- Continue to support OS-authenticated SMB/NAS and synchronized cloud folders.
+- Before adding application-managed remote access, design device pairing,
+  passkeys or MFA, short-lived tokens, revocation, encrypted transport and
+  storage, least privilege, audit logs, safe path handling, integrity checks,
+  and conservative remote-delete defaults.

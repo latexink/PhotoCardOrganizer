@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Photo Card Organizer
+Comment=Monitor camera cards and organize verified media transfers
+Exec=photo-card-organizer
+TryExec=photo-card-organizer
+Icon=photo-card-organizer
+Terminal=false
+Categories=Graphics;Utility;
+StartupNotify=true
