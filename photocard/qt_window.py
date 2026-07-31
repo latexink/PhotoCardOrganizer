@@ -144,9 +144,9 @@ from .transfer_hub import (
 
 PAGE_NAMES = (
     "Dashboard",
-    "Library management",
+    "Libraries",
     "Cards and drives",
-    "Existing library",
+    "Import or merge",
     "Digest inboxes",
     "Travel sync",
     "Library export",
@@ -577,10 +577,14 @@ class PhotoCardApp(QMainWindow):
             "Review and import one or more selected connected cards. Multiple cards are queued safely."
         )
         self.import_button.clicked.connect(self._import_selected)
-        self.organize_library_button = QPushButton("Organize library")
+        self.organize_library_button = QPushButton("Import or merge folder")
         self._add_icon(self.organize_library_button, "settings")
-        self.organize_library_button.setToolTip("Configure an existing folder before any transfer begins.")
-        self.organize_library_button.clicked.connect(lambda: self.show_page("Existing library"))
+        self.organize_library_button.setToolTip(
+            "Copy or safely move files from another folder into a managed library."
+        )
+        self.organize_library_button.clicked.connect(
+            self._open_import_merge
+        )
         self.travel_sync_button = QPushButton("Sync travel library")
         self._add_icon(self.travel_sync_button, "refresh")
         self.travel_sync_button.setToolTip(
@@ -704,19 +708,45 @@ class PhotoCardApp(QMainWindow):
 
     def _build_library_management_page(self) -> None:
         _page, layout = self._new_page(
-            "Library management",
-            "Library management",
+            "Libraries",
+            "Libraries",
         )
         summary = QFrame()
         summary.setProperty("class", "preview")
         summary_layout = QVBoxLayout(summary)
-        summary_title = QLabel("PRIMARY LIBRARY DESTINATIONS")
+        summary_title = QLabel("MANAGED LIBRARIES")
         set_dynamic_class(summary_title, "muted")
         self.library_summary_label = QLabel()
         self.library_summary_label.setWordWrap(True)
         summary_layout.addWidget(summary_title)
         summary_layout.addWidget(self.library_summary_label)
         layout.addWidget(summary)
+
+        primary_actions = QHBoxLayout()
+        self.add_library_button = accent(
+            QPushButton("Set up library")
+        )
+        self._add_icon(self.add_library_button, "add")
+        self.add_library_button.setToolTip(
+            "Create a destination or connect an existing Photo Card Organizer "
+            "library. This does not import or move media."
+        )
+        self.add_library_button.clicked.connect(
+            self._add_library_destination
+        )
+        self.import_or_merge_button = QPushButton("Import or merge")
+        self._add_icon(self.import_or_merge_button, "next")
+        self.import_or_merge_button.setToolTip(
+            "Add files from another folder or library to the selected managed "
+            "library through a reviewed copy or verified-move workflow."
+        )
+        self.import_or_merge_button.clicked.connect(
+            self._open_import_merge
+        )
+        primary_actions.addWidget(self.add_library_button)
+        primary_actions.addWidget(self.import_or_merge_button)
+        primary_actions.addStretch(1)
+        layout.addLayout(primary_actions)
 
         self.library_table = QTableWidget(0, 6)
         self.library_table.setHorizontalHeaderLabels(
@@ -760,21 +790,16 @@ class PhotoCardApp(QMainWindow):
         layout.addWidget(self.library_table, 1)
 
         actions = QHBoxLayout()
-        add_library = accent(QPushButton("Add library"))
-        self._add_icon(add_library, "add")
-        add_library.setToolTip(
-            "Add a named local, network-mounted, or removable library."
-        )
-        add_library.clicked.connect(self._add_library_destination)
-        self.edit_library_button = QPushButton("Edit")
+        self.edit_library_button = QPushButton("Edit details")
         self._add_icon(self.edit_library_button, "edit")
         self.edit_library_button.setToolTip(
-            "Edit the selected library name, folder, type, or storage profile."
+            "Change the selected library's name, connected folder, type, or "
+            "storage profile. Changing the folder does not move media."
         )
         self.edit_library_button.clicked.connect(
             self._edit_library_destination
         )
-        self.default_library_button = QPushButton("Set as default")
+        self.default_library_button = QPushButton("Use by default")
         self._add_icon(self.default_library_button, "save")
         self.default_library_button.setToolTip(
             "Use the selected library for monitoring and new imports by default."
@@ -782,7 +807,7 @@ class PhotoCardApp(QMainWindow):
         self.default_library_button.clicked.connect(
             self._set_default_library
         )
-        self.open_selected_library_button = QPushButton("Open")
+        self.open_selected_library_button = QPushButton("Open folder")
         self._add_icon(self.open_selected_library_button, "open")
         self.open_selected_library_button.setToolTip(
             "Open the selected library folder."
@@ -790,24 +815,16 @@ class PhotoCardApp(QMainWindow):
         self.open_selected_library_button.clicked.connect(
             self._open_selected_library
         )
-        self.upgrade_library_button = QPushButton("Upgrade metadata")
+        self.upgrade_library_button = QPushButton("Prepare metadata")
         self._add_icon(self.upgrade_library_button, "refresh")
         self.upgrade_library_button.setToolTip(
-            "Initialize or upgrade the selected library's versioned "
-            ".photocard-organizer metadata after confirmation."
+            "Initialize, check, or upgrade the selected library's internal "
+            "metadata. Media files are not changed."
         )
         self.upgrade_library_button.clicked.connect(
             self._upgrade_selected_library
         )
-        migrate = QPushButton("Migrate existing library")
-        self._add_icon(migrate, "next")
-        migrate.setToolTip(
-            "Open the guided source, organization, review, and processing workflow."
-        )
-        migrate.clicked.connect(
-            lambda: self.show_page("Existing library")
-        )
-        self.remove_library_button = QPushButton("Remove")
+        self.remove_library_button = QPushButton("Forget")
         self._add_icon(self.remove_library_button, "remove")
         self.remove_library_button.setProperty("danger", True)
         self.remove_library_button.setToolTip(
@@ -817,12 +834,10 @@ class PhotoCardApp(QMainWindow):
             self._remove_library_destination
         )
         for button in (
-            add_library,
             self.edit_library_button,
             self.default_library_button,
             self.open_selected_library_button,
             self.upgrade_library_button,
-            migrate,
         ):
             actions.addWidget(button)
         actions.addStretch(1)
@@ -892,7 +907,10 @@ class PhotoCardApp(QMainWindow):
         layout.addWidget(identity_group)
 
     def _build_existing_library_page(self) -> None:
-        _page, page_layout = self._new_page("Existing library", "Existing library")
+        _page, page_layout = self._new_page(
+            "Import or merge",
+            "Import or merge",
+        )
         workflow_header = QWidget()
         workflow_layout = QVBoxLayout(workflow_header)
         workflow_layout.setContentsMargins(0, 0, 0, 0)
@@ -900,7 +918,9 @@ class PhotoCardApp(QMainWindow):
         step_row = QHBoxLayout()
         self.existing_step_label = QLabel("Step 1 of 3: Source")
         self.existing_step_label.setObjectName("dialogTitle")
-        self.existing_step_detail = QLabel("Choose the library you want to organize")
+        self.existing_step_detail = QLabel(
+            "Choose the folder whose files you want to add"
+        )
         set_dynamic_class(self.existing_step_detail, "muted")
         step_row.addWidget(self.existing_step_label)
         step_row.addStretch(1)
@@ -921,7 +941,7 @@ class PhotoCardApp(QMainWindow):
         source_layout = QVBoxLayout(source_content)
         source_layout.setContentsMargins(2, 2, 12, 16)
         source_layout.setSpacing(14)
-        source_group = QGroupBox("Source library")
+        source_group = QGroupBox("Files to add")
         source_form = QFormLayout(source_group)
         source_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         source_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
@@ -940,8 +960,8 @@ class PhotoCardApp(QMainWindow):
         self.existing_camera_edit.setToolTip(CAMERA_NAME_HELP)
         self.existing_recursive_check = QCheckBox("Include files in subfolders")
         self.existing_recursive_check.setChecked(True)
-        source_form.addRow("Existing library folder", source_row)
-        source_form.addRow("Import label", self.existing_name_edit)
+        source_form.addRow("Source folder", source_row)
+        source_form.addRow("Source name", self.existing_name_edit)
         source_form.addRow("", self.existing_recursive_check)
         source_layout.addWidget(source_group)
         self.existing_source_state_label = QLabel("Choose a folder to continue.")
@@ -955,13 +975,14 @@ class PhotoCardApp(QMainWindow):
         plan_layout = QVBoxLayout(plan_content)
         plan_layout.setContentsMargins(2, 2, 12, 16)
         plan_layout.setSpacing(14)
-        destination_group = QGroupBox("Destination and source handling")
+        destination_group = QGroupBox("Destination")
         destination_form = QFormLayout(destination_group)
+        self.existing_destination_form = destination_form
         destination_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         destination_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.existing_library_combo = QComboBox()
         self.existing_library_combo.setToolTip(
-            "Choose one of the enabled destinations from Library management."
+            "Choose one of the enabled destinations from Libraries."
         )
         destination_row = QWidget()
         destination_row_layout = QHBoxLayout(destination_row)
@@ -971,10 +992,10 @@ class PhotoCardApp(QMainWindow):
         destination_browse = QPushButton("Manage")
         self._add_icon(destination_browse, "settings")
         destination_browse.setToolTip(
-            "Add or edit selectable destinations in Library management."
+            "Add or edit selectable destinations in Libraries."
         )
         destination_browse.clicked.connect(
-            lambda: self.show_page("Library management")
+            lambda: self.show_page("Libraries")
         )
         destination_row_layout.addWidget(self.destination_edit, 1)
         destination_row_layout.addWidget(destination_browse)
@@ -998,15 +1019,22 @@ class PhotoCardApp(QMainWindow):
             "destination subfolder."
         )
         self.existing_action_combo = choice_combo(
-            [("Copy", "copy"), ("Move", "move")], "copy"
+            [
+                ("Copy and keep source files", "copy"),
+                (
+                    "Verified move; remove source after checks",
+                    "move",
+                ),
+            ],
+            "copy",
         )
         destination_form.addRow(
-            "Managed library",
+            "Receiving library",
             self.existing_library_combo,
         )
-        destination_form.addRow("Destination library", destination_row)
+        destination_form.addRow("Library folder", destination_row)
         destination_form.addRow(
-            "Named folder type",
+            "Import grouping",
             self.existing_folder_mode_combo,
         )
         destination_form.addRow(
@@ -1017,7 +1045,10 @@ class PhotoCardApp(QMainWindow):
             "Resolved library subfolder",
             self.existing_prefix_edit,
         )
-        destination_form.addRow("Transfer method", self.existing_action_combo)
+        destination_form.addRow(
+            "Source-file handling",
+            self.existing_action_combo,
+        )
         plan_layout.addWidget(destination_group)
 
         organization_group = QGroupBox("Organization")
@@ -1104,7 +1135,9 @@ class PhotoCardApp(QMainWindow):
         self.existing_back_button.clicked.connect(self._existing_step_back)
         navigation_row.addWidget(self.existing_back_button)
         navigation_row.addStretch(1)
-        self.existing_next_button = accent(QPushButton("Continue to organization"))
+        self.existing_next_button = accent(
+            QPushButton("Continue to destination")
+        )
         self._add_icon(self.existing_next_button, "next")
         self.existing_next_button.setToolTip(
             "Validate this step and continue without scanning or changing media."
@@ -1112,12 +1145,12 @@ class PhotoCardApp(QMainWindow):
         self.existing_next_button.clicked.connect(self._existing_step_next)
         navigation_row.addWidget(self.existing_next_button)
         self.existing_review_button = accent(
-            QPushButton("Save + Process")
+            QPushButton("Save settings + Import")
         )
         self._add_icon(self.existing_review_button, "play")
         self.existing_review_button.setToolTip(
             "Show the final confirmation, save the reviewed settings, then "
-            "begin the initial scan and import."
+            "begin the import or merge."
         )
         self.existing_review_button.clicked.connect(self._review_existing_import)
         navigation_row.addWidget(self.existing_review_button)
@@ -1961,7 +1994,7 @@ class PhotoCardApp(QMainWindow):
         browse_destination = QPushButton("Manage libraries")
         self._add_icon(browse_destination, "settings")
         browse_destination.clicked.connect(
-            lambda: self.show_page("Library management")
+            lambda: self.show_page("Libraries")
         )
         destination_layout.addWidget(self.safety_destination_edit, 1)
         destination_layout.addWidget(browse_destination)
@@ -2416,7 +2449,8 @@ class PhotoCardApp(QMainWindow):
             ),
             (
                 self.existing_source_edit,
-                "The existing library to scan. This location must be separate from the destination library.",
+                "The folder to scan and add. It must be separate from the "
+                "destination library.",
             ),
             (
                 self.existing_name_edit,
@@ -2573,9 +2607,9 @@ class PhotoCardApp(QMainWindow):
                 item.setToolTip(
                     {
                         "Dashboard": "Connected sources, capacity, and reviewed import actions.",
-                        "Library management": "Manage named local, mounted-network, and removable library destinations and their metadata.",
+                        "Libraries": "Set up destinations, choose a default, import or merge files, and maintain library metadata.",
                         "Cards and drives": "Onboard cards and retain their identity and source settings.",
-                        "Existing library": "Analyze and organize a folder only after reviewing its setup.",
+                        "Import or merge": "Add files from another folder to a managed library after reviewing the destination and source-file handling.",
                         "Digest inboxes": "Retain mixed incoming folders, digest new files incrementally, and review per-file state.",
                         "Travel sync": "Bring new laptop or travel-drive media into the desktop master with copy-only reconciliation.",
                         "Library export": "Select captures and detected bracket, burst, or interval groups for verified editing exports.",
@@ -2601,6 +2635,49 @@ class PhotoCardApp(QMainWindow):
         self.navigation.setCurrentRow(index)
         if hasattr(self, "edit_card_button"):
             self._update_card_action_state()
+
+    def _open_import_merge(self) -> None:
+        selected = self._import_merge_target()
+        self.show_page("Import or merge")
+        if hasattr(self, "existing_step_stack"):
+            self._set_existing_step(0)
+        if selected is None or not hasattr(
+            self,
+            "existing_library_combo",
+        ):
+            return
+        index = self.existing_library_combo.findData(
+            str(selected.get("id", ""))
+        )
+        if index >= 0:
+            self.existing_library_combo.setCurrentIndex(index)
+            self._existing_library_changed()
+
+    def _import_merge_target(self) -> dict | None:
+        preferred = (
+            self._selected_library_destination(),
+            library_destination(
+                {
+                    "library_destinations": self.library_destinations,
+                },
+                self.default_library_id,
+            ),
+            *self.library_destinations,
+        )
+        seen: set[str] = set()
+        for library in preferred:
+            if library is None:
+                continue
+            library_id = str(library.get("id", ""))
+            if library_id in seen:
+                continue
+            seen.add(library_id)
+            if (
+                library.get("enabled", True)
+                and str(library.get("root", "")).strip()
+            ):
+                return library
+        return None
 
     def _refresh_import_library_choices(self) -> None:
         for attribute in (
@@ -2667,8 +2744,12 @@ class PhotoCardApp(QMainWindow):
             str(self.existing_library_combo.currentData() or ""),
         )
         if selected is not None:
-            self.destination_edit.setText(
-                str(selected.get("root", ""))
+            root = str(selected.get("root", ""))
+            self.destination_edit.setText(root)
+            self.destination_edit.setCursorPosition(0)
+            self.destination_edit.setToolTip(
+                f"Library folder: {root}\n"
+                "This receiving folder cannot overlap the source."
             )
         self._update_existing_preview()
 
@@ -2678,6 +2759,14 @@ class PhotoCardApp(QMainWindow):
         mode = combo_value(self.existing_folder_mode_combo)
         named = mode != "standard"
         self.existing_event_name_edit.setEnabled(named)
+        self.existing_destination_form.setRowVisible(
+            self.existing_event_name_edit,
+            named,
+        )
+        self.existing_destination_form.setRowVisible(
+            self.existing_prefix_edit,
+            named,
+        )
         prefix = ""
         if named:
             try:
@@ -2815,11 +2904,11 @@ class PhotoCardApp(QMainWindow):
         if not hasattr(self, "existing_step_stack"):
             return
         index = max(0, min(2, int(index)))
-        titles = ("Source", "Organize", "Review")
+        titles = ("Source", "Destination", "Review")
         details = (
-            "Choose the library you want to organize",
-            "Choose where files go and how they are arranged",
-            "Confirm the complete import plan",
+            "Choose the folder whose files you want to add",
+            "Choose the receiving library and folder layout",
+            "Confirm what will be copied, verified, and recorded",
         )
         self.existing_step_stack.setCurrentIndex(index)
         self.existing_step_progress.setValue(index + 1)
@@ -2829,7 +2918,9 @@ class PhotoCardApp(QMainWindow):
         self.existing_next_button.setVisible(index < 2)
         self.existing_review_button.setVisible(index == 2)
         self.existing_next_button.setText(
-            "Continue to organization" if index == 0 else "Continue to review"
+            "Continue to destination"
+            if index == 0
+            else "Continue to review"
         )
         if index == 2:
             self._update_existing_review_summary()
@@ -2848,16 +2939,20 @@ class PhotoCardApp(QMainWindow):
             else:
                 return
         except (OSError, ValueError) as exc:
-            QMessageBox.critical(self, "Check existing library setup", str(exc))
+            QMessageBox.critical(
+                self,
+                "Check import or merge setup",
+                str(exc),
+            )
             return
         self._set_existing_step(current + 1)
 
     def _validate_existing_source(self) -> Path:
         source = Path(self.existing_source_edit.text()).expanduser().resolve()
         if not source.is_dir():
-            raise ValueError("Choose an existing library folder.")
+            raise ValueError("Choose a source folder.")
         if not self.existing_name_edit.text().strip():
-            raise ValueError("Enter an import label.")
+            raise ValueError("Enter a short source name.")
         return source
 
     def _reset_existing_structure(self) -> None:
@@ -2910,7 +3005,7 @@ class PhotoCardApp(QMainWindow):
         if not self.existing_source_edit.text().strip():
             source_state = "Choose a folder to continue."
         elif not self.existing_name_edit.text().strip():
-            source_state = "Enter an import label to continue."
+            source_state = "Enter a source name to continue."
         else:
             scope = (
                 "folder and subfolders"
@@ -3037,13 +3132,17 @@ class PhotoCardApp(QMainWindow):
 
     def _browse_existing_source(self) -> None:
         selected = QFileDialog.getExistingDirectory(
-            self, "Choose an existing library folder", self.existing_source_edit.text()
+            self,
+            "Choose a folder to import or merge",
+            self.existing_source_edit.text(),
         )
         if not selected:
             return
         self.existing_source_edit.setText(selected)
         if not self.existing_name_edit.text().strip():
-            self.existing_name_edit.setText(Path(selected).name or "Existing library")
+            self.existing_name_edit.setText(
+                Path(selected).name or "Imported folder"
+            )
         self._update_existing_preview()
 
     def _detect_existing_structure(self) -> None:
@@ -3145,14 +3244,18 @@ class PhotoCardApp(QMainWindow):
         try:
             candidate, card, preset = self._build_existing_import_plan()
         except (OSError, ValueError) as exc:
-            QMessageBox.critical(self, "Cannot organize library", str(exc))
+            QMessageBox.critical(
+                self,
+                "Cannot import or merge",
+                str(exc),
+            )
             return
         summary = initial_import_summary(card, candidate, preset)
         if not is_yes(
             QMessageBox.question(
                 self,
-                "Confirm initial scan and import",
-                f"{summary}\n\nStart the initial scan and import?",
+                "Confirm import or merge",
+                f"{summary}\n\nStart this import?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No,
             )
@@ -5604,7 +5707,13 @@ class PhotoCardApp(QMainWindow):
                     )
                 item.setToolTip(value)
                 self.library_table.setItem(row, column, item)
-            if library_id == selected_id:
+            if (
+                library_id == selected_id
+                or (
+                    not selected_id
+                    and library_id == self.default_library_id
+                )
+            ):
                 selected_row = row
         if selected_row >= 0:
             self.library_table.selectRow(selected_row)
@@ -5644,6 +5753,20 @@ class PhotoCardApp(QMainWindow):
             selected
             and directory_available(selected.get("root", ""))
         )
+        import_target = self._import_merge_target()
+        self.import_or_merge_button.setEnabled(
+            import_target is not None
+        )
+        if import_target is not None:
+            self.import_or_merge_button.setToolTip(
+                "Add files from another folder or library to "
+                f"{import_target.get('name', 'the selected library')} through "
+                "a reviewed copy or verified-move workflow."
+            )
+        else:
+            self.import_or_merge_button.setToolTip(
+                "Set up an enabled library before importing or merging files."
+            )
         self.edit_library_button.setEnabled(available)
         self.default_library_button.setEnabled(
             available
@@ -5653,6 +5776,21 @@ class PhotoCardApp(QMainWindow):
         )
         self.open_selected_library_button.setEnabled(online)
         self.upgrade_library_button.setEnabled(online)
+        if online:
+            metadata_state = library_metadata_status(
+                selected.get("root", "")
+            )
+            if metadata_state == "Not initialized":
+                metadata_action = "Initialize metadata"
+            elif metadata_state.startswith("Upgrade available"):
+                metadata_action = "Upgrade metadata"
+            elif metadata_state == "Needs attention":
+                metadata_action = "Repair metadata"
+            else:
+                metadata_action = "Check metadata"
+        else:
+            metadata_action = "Prepare metadata"
+        self.upgrade_library_button.setText(metadata_action)
         self.remove_library_button.setEnabled(
             available and len(self.library_destinations) > 1
         )
@@ -5765,7 +5903,7 @@ class PhotoCardApp(QMainWindow):
         if selected is None:
             return
         if self._saved_processing_config(
-            "upgrading library metadata"
+            "preparing library metadata"
         ) is None:
             return
         root = Path(str(selected.get("root", ""))).expanduser()
@@ -5778,14 +5916,14 @@ class PhotoCardApp(QMainWindow):
             f"Folder: {root}\n"
             f"Current state: {current_status}\n"
             f"Legacy export-session records to migrate: {legacy_logs}\n\n"
-            "The app will create or upgrade library.json inside "
-            ".photocard-organizer. Existing metadata is backed up before a "
+            "The app will initialize, check, or upgrade library.json inside "
+            ".photocard-organizer. Existing metadata is backed up before any "
             "schema migration. Media files are not changed."
         )
         if not is_yes(
             QMessageBox.question(
                 self,
-                "Confirm library metadata upgrade",
+                "Confirm metadata preparation",
                 summary,
                 QMessageBox.StandardButton.Yes
                 | QMessageBox.StandardButton.No,
@@ -5802,7 +5940,7 @@ class PhotoCardApp(QMainWindow):
         except (OSError, ValueError) as exc:
             QMessageBox.critical(
                 self,
-                "Could not upgrade library metadata",
+                "Could not prepare library metadata",
                 str(exc),
             )
             return

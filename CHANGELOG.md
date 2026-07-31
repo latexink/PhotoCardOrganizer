@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Renamed the primary destination screen to `Libraries` and separated its two main tasks into `Set up library` and `Import or merge`.
+- Clarified that connecting a library destination does not scan, import, or move media, while importing or merging always uses the reviewed copy or verified-move workflow.
+- Carried the selected or default destination into the import workflow and made unavailable selections fall back to an enabled library.
+- Replaced the generic metadata-upgrade action with state-specific initialize, check, upgrade, or repair wording that explicitly leaves media unchanged.
+- Hid optional storage-profile choices behind `Show storage options` to keep ordinary library setup focused.
+
 ## 0.7.0 - 2026-07-28
 
 - Added a dedicated Library management page for multiple named local, OS-mounted network, and removable primary destinations with a selectable default.

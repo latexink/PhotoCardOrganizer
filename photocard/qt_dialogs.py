@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
     QWizard,
@@ -633,21 +634,25 @@ class LibraryDestinationDialog(QDialog):
         self.existing_roots = existing_roots
         self.result_library: dict | None = None
         self.setWindowTitle(
-            "Edit library destination"
+            "Edit library"
             if library
-            else "Add library destination"
+            else "Set up library"
         )
         self.setMinimumWidth(680)
         layout = QVBoxLayout(self)
         title = QLabel(self.windowTitle())
         title.setObjectName("dialogTitle")
         detail = QLabel(
-            "A library is a selectable primary destination. Local folders, "
-            "mounted network locations, and removable archive drives are "
-            "supported."
+            "Choose where organized media will be stored. Connecting an "
+            "existing folder does not scan, import, or move its files."
         )
         detail.setWordWrap(True)
         detail.setProperty("class", "muted")
+        detail.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Fixed,
+        )
+        layout.setSpacing(12)
         layout.addWidget(title)
         layout.addWidget(detail)
         form = QFormLayout()
@@ -664,9 +669,9 @@ class LibraryDestinationDialog(QDialog):
         )
         self.kind_combo = choice_combo(
             [
-                ("Local library", "local"),
-                ("Network or remote-mounted library", "network"),
-                ("Removable or archive library", "removable"),
+                ("On this computer", "local"),
+                ("Mounted network folder", "network"),
+                ("Removable or archive drive", "removable"),
             ],
             str(self.original.get("kind", "local")),
         )
@@ -683,12 +688,31 @@ class LibraryDestinationDialog(QDialog):
         self.enabled_check.setChecked(
             bool(self.original.get("enabled", True))
         )
+        self.advanced_storage_check = QCheckBox(
+            "Show storage options"
+        )
+        show_storage = (
+            str(self.original.get("storage_profile", "auto"))
+            != "auto"
+        )
+        self.advanced_storage_check.setChecked(show_storage)
+        self.storage_label = QLabel("Storage profile")
+        self.storage_label.setVisible(show_storage)
+        self.storage_combo.setVisible(show_storage)
+        self.advanced_storage_check.toggled.connect(
+            self.storage_label.setVisible
+        )
+        self.advanced_storage_check.toggled.connect(
+            self.storage_combo.setVisible
+        )
+        self.name_edit.setPlaceholderText("Example: Main photo library")
         self.name_edit.setToolTip(
             "A short name shown in import destination selectors."
         )
         self.root_edit.setToolTip(
             "The folder that contains organized media and the "
-            ".photocard-organizer state folder."
+            ".photocard-organizer state folder. Changing this path reconnects "
+            "the library; it does not move files."
         )
         self.kind_combo.setToolTip(
             "Describes how this computer reaches the library. Network "
@@ -698,6 +722,10 @@ class LibraryDestinationDialog(QDialog):
             "HDD and network profiles let the app favor sequential, "
             "lower-churn transfer behavior as those optimizations are enabled."
         )
+        self.advanced_storage_check.setToolTip(
+            "Show an optional storage hint. Automatic detection is appropriate "
+            "for most libraries."
+        )
         self.enabled_check.setToolTip(
             "Disabled libraries stay configured but cannot be selected for "
             "an import."
@@ -705,13 +733,22 @@ class LibraryDestinationDialog(QDialog):
         form.addRow("Library name", self.name_edit)
         form.addRow("Library folder", root_widget)
         form.addRow("Location type", self.kind_combo)
-        form.addRow("Storage profile", self.storage_combo)
+        form.addRow("", self.advanced_storage_check)
+        form.addRow(self.storage_label, self.storage_combo)
         form.addRow("", self.enabled_check)
         layout.addLayout(form)
+        layout.addStretch(1)
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save
             | QDialogButtonBox.StandardButton.Cancel
         )
+        save_button = buttons.button(
+            QDialogButtonBox.StandardButton.Save
+        )
+        if save_button is not None:
+            save_button.setText(
+                "Save changes" if library else "Add library"
+            )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)

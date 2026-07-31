@@ -123,13 +123,15 @@ Existing schema-1 through schema-4 configuration files are read by version 0.7.0
 
 ## First Setup
 
-1. Open `Library management`, add or review named destinations, and select the default library.
+1. Open `Libraries`, select `Set up library`, and choose where organized media should be stored. Connecting an existing Photo Card Organizer library does not scan, import, or move its media.
 2. Open `Cards and drives`, select `Onboard card`, and choose a volume root such as `E:\` or `/media/alex/CANON_R5`.
 3. Follow the wizard through card identity, destination, organization and safety, then review the concise initial-import summary.
 4. Leave source-file handling as `Copy` initially. A move displays an additional checksum and source-deletion warning.
 5. Select one or more connected rows on `Dashboard` with Ctrl or Shift, then select `Import selected cards`. Shared-destination work is queued sequentially and each card receives a separate transfer session.
 
-Use `Existing library` for files already on a hard drive. The guided workflow keeps one decision set visible at a time: choose the source and scan scope, configure a managed destination and organization, then review the exact operation, verification, and backups. The final `Save + Process` action shows the confirmation, saves the reviewed settings, and only then starts the scan. `Analyze source folders` is optional and read-only; it previews at most 10,000 filesystem files to propose up to twelve editable per-media source levels. Reaching that preview limit never limits the import itself, which scans the complete selected scope. Changing the source scope invalidates the detected mapping instead of silently reusing stale assumptions. Folder imports use the same conflicts, replicas, verification, and move warning as cards, but never create an identity or history folder inside the source.
+Use `Import or merge` for files already on a hard drive, another managed library, a backup, or a removable transfer drive. The selected library is carried into the guided workflow, which shows one decision set at a time: choose the source and scan scope, choose the receiving library and organization, then review the exact operation, verification, and backups. The final `Save settings + Import` action shows the confirmation, saves the reviewed settings, and only then starts the scan. Copy and retain source files is the default; verified move remains an explicit destructive option.
+
+`Analyze source folders` is optional and read-only. It previews at most 10,000 filesystem files to propose up to twelve editable per-media source levels. Reaching that preview limit never limits the import itself, which scans the complete selected scope. Changing the source scope invalidates the detected mapping instead of silently reusing stale assumptions. Folder imports use the same conflicts, replicas, verification, and move warning as cards, but never create an identity or history folder inside the source.
 
 The `Backups and clones` tab accepts multiple output roots. A required destination must be verified before an import completes or a move source can be deleted. Optional destination failures are recorded as warnings while the primary import completes. Matching relative names and transfer-session IDs are used across the primary library and every replica.
 

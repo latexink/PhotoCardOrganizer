@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
     QDialog,
+    QDialogButtonBox,
     QMessageBox,
     QScrollArea,
     QTabWidget,
@@ -27,6 +28,7 @@ from photocard.models import ActivityEvent
 from photocard.qt_dialogs import (
     CardOnboardingWizard,
     DigestInboxDialog,
+    LibraryDestinationDialog,
     StructureMappingDialog,
 )
 from photocard.qt_common import initial_import_summary
@@ -110,6 +112,8 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertIn("Digest inboxes", PAGE_NAMES)
         self.assertIn("Travel sync", PAGE_NAMES)
         self.assertIn("Library export", PAGE_NAMES)
+        self.assertIn("Libraries", PAGE_NAMES)
+        self.assertIn("Import or merge", PAGE_NAMES)
         self.assertEqual("Help & about", PAGE_NAMES[-1])
         for widget in (
             self.window.folder_name_edit,
@@ -173,9 +177,9 @@ class QtWorkflowTests(unittest.TestCase):
             information.call_args.args[2],
         )
 
-    def test_release_070_workflow_controls_are_explicit(self) -> None:
+    def test_workflow_controls_are_explicit(self) -> None:
         self.assertEqual(
-            "Save + Process",
+            "Save settings + Import",
             self.window.existing_review_button.text(),
         )
         self.assertTrue(self.window.destination_edit.isReadOnly())
@@ -300,9 +304,11 @@ class QtWorkflowTests(unittest.TestCase):
 
     def test_existing_library_uses_guided_source_plan_review_steps(self) -> None:
         self.window.resize(980, 660)
-        self.window.show_page("Existing library")
+        self.window.show_page("Import or merge")
         self.app.processEvents()
-        page = self.window.stack.widget(self.window.page_indexes["Existing library"])
+        page = self.window.stack.widget(
+            self.window.page_indexes["Import or merge"]
+        )
         areas = page.findChildren(QScrollArea)
 
         self.assertEqual(2, len(areas))
@@ -314,7 +320,7 @@ class QtWorkflowTests(unittest.TestCase):
         source = self.base / "existing-library"
         source.mkdir()
         self.window.existing_source_edit.setText(str(source))
-        self.window.existing_name_edit.setText("Existing library")
+        self.window.existing_name_edit.setText("Archive source")
         self.assertTrue(self.window.existing_next_button.isEnabled())
 
         self.window.existing_next_button.click()
@@ -335,6 +341,113 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertIn(f"Source: {source}", summary)
         self.assertIn("Operation: Copy", summary)
         self.assertIn("Scan scope: Selected folder and subfolders", summary)
+
+    def test_library_tasks_use_plain_intents_and_carry_destination(self) -> None:
+        self.window.show_page("Libraries")
+        self.app.processEvents()
+
+        self.assertEqual("Set up library", self.window.add_library_button.text())
+        self.assertEqual(
+            "Import or merge",
+            self.window.import_or_merge_button.text(),
+        )
+        selected = self.window._selected_library_destination()
+        self.assertIsNotNone(selected)
+        self.assertEqual(self.window.default_library_id, selected["id"])
+
+        self.window._open_import_merge()
+        self.app.processEvents()
+
+        self.assertEqual(
+            self.window.page_indexes["Import or merge"],
+            self.window.stack.currentIndex(),
+        )
+        self.assertEqual(
+            self.window.default_library_id,
+            self.window.existing_library_combo.currentData(),
+        )
+        self.assertEqual(
+            "Receiving library",
+            self.window.existing_destination_form.labelForField(
+                self.window.existing_library_combo
+            ).text(),
+        )
+        self.assertEqual(
+            "Library folder",
+            self.window.existing_destination_form.labelForField(
+                self.window.destination_edit.parentWidget()
+            ).text(),
+        )
+        self.assertEqual(
+            "Import grouping",
+            self.window.existing_destination_form.labelForField(
+                self.window.existing_folder_mode_combo
+            ).text(),
+        )
+        self.assertIn(
+            "keep source files",
+            self.window.existing_action_combo.currentText(),
+        )
+        self.assertIn(
+            self.window.destination_edit.text(),
+            self.window.destination_edit.toolTip(),
+        )
+        self.assertEqual(0, self.window.destination_edit.cursorPosition())
+        self.assertTrue(self.window.existing_event_name_edit.isHidden())
+        self.assertTrue(self.window.existing_prefix_edit.isHidden())
+
+        route_index = self.window.existing_folder_mode_combo.findData(
+            "wedding"
+        )
+        self.window.existing_folder_mode_combo.setCurrentIndex(route_index)
+        self.app.processEvents()
+        self.assertFalse(self.window.existing_event_name_edit.isHidden())
+        self.assertFalse(self.window.existing_prefix_edit.isHidden())
+        self.assertEqual(
+            "Save settings + Import",
+            self.window.existing_review_button.text(),
+        )
+
+    def test_library_metadata_action_names_the_available_operation(self) -> None:
+        Path(self.window.config["destination_root"]).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        self.window._refresh_library_destinations()
+        self.app.processEvents()
+
+        self.assertEqual(
+            "Initialize metadata",
+            self.window.upgrade_library_button.text(),
+        )
+        self.assertIn(
+            "Media files are not changed",
+            self.window.upgrade_library_button.toolTip(),
+        )
+
+    def test_library_setup_hides_optional_storage_details(self) -> None:
+        dialog = LibraryDestinationDialog(self.window)
+        dialog.show()
+        self.app.processEvents()
+
+        self.assertEqual("Set up library", dialog.windowTitle())
+        self.assertTrue(dialog.storage_label.isHidden())
+        self.assertTrue(dialog.storage_combo.isHidden())
+        self.assertIn("does not move files", dialog.root_edit.toolTip())
+        buttons = dialog.findChild(QDialogButtonBox)
+        self.assertIsNotNone(buttons)
+        save_button = buttons.button(
+            QDialogButtonBox.StandardButton.Save
+        )
+        self.assertIsNotNone(save_button)
+        self.assertEqual("Add library", save_button.text())
+
+        dialog.advanced_storage_check.setChecked(True)
+        self.app.processEvents()
+        self.assertFalse(dialog.storage_label.isHidden())
+        self.assertFalse(dialog.storage_combo.isHidden())
+        dialog.close()
+        dialog.deleteLater()
 
     def test_guided_existing_library_copy_runs_after_final_confirmation(self) -> None:
         self.window.config["monitor"]["settle_seconds"] = 0

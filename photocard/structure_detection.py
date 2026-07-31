@@ -191,7 +191,7 @@ def detect_existing_structure(
         raise ValueError("Structure analysis requires at least one editable folder level.")
     root = Path(source_root).expanduser().resolve()
     if not root.is_dir():
-        raise ValueError(f"Existing library folder does not exist: {root}")
+        raise ValueError(f"Source folder does not exist: {root}")
     extension_kind: dict[str, str] = {}
     for kind, rule in media_rules.items():
         if not rule.get("enabled", True):
