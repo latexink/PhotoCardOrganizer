@@ -1,11 +1,11 @@
 # Roadmap
 
-This file records candidate work after version 0.7.0. It is not a promise that
+This file records candidate work after version 0.7.1. It is not a promise that
 every item will ship in the next release.
 
 ## Proposed Release Sequence
 
-- Use version 0.7.1 for behavior-compatible maintenance: efficient monitoring,
+- Use version 0.7.2 for behavior-compatible maintenance: efficient monitoring,
   scan-plan reuse, metadata and manifest batching, cached storage status, and
   responsive background UI work. Do not require a library schema migration for
   this release.
@@ -108,7 +108,7 @@ every item will ship in the next release.
 ## Guided Setup Wizards
 
 - Target the complete wizard set for a minor feature release such as `0.8.0`;
-  keep `0.7.1` focused on behavior-compatible maintenance and performance work.
+  keep `0.7.2` focused on behavior-compatible maintenance and performance work.
   The first-run and Add library wizard may ship first if the work is staged.
 - Show an optional first-run wizard when no managed library exists. Guide the
   user through naming the library, selecting or creating its destination,
@@ -175,7 +175,7 @@ every item will ship in the next release.
   media scan. Keep card scans sequential by default to avoid unnecessary
   platter-drive contention.
 
-## Version 0.7.1 Performance Maintenance
+## Version 0.7.2 Performance Maintenance
 
 - Build one immutable scan plan per operation and reuse it for preview,
   confirmation, digest classification, and execution. Do not walk and stat the

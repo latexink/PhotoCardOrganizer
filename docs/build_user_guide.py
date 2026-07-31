@@ -165,8 +165,9 @@ class InterfaceMap(Flowable):
         c.drawString(18, self.height - 39, "PHOTO CARD ORGANIZER")
         items = [
             "Dashboard",
+            "Libraries",
             "Cards and drives",
-            "Existing library",
+            "Import or merge",
             "Digest inboxes",
             "Travel sync",
             "Library export",
@@ -207,7 +208,7 @@ class InterfaceMap(Flowable):
         c.setFillColor(colors.HexColor("#34445F"))
         c.roundRect(260, self.height - 143, 83, 22, 4, fill=1, stroke=0)
         c.setFillColor(WHITE)
-        c.drawCentredString(301.5, self.height - 136, "ORGANIZE LIBRARY")
+        c.drawCentredString(301.5, self.height - 136, "IMPORT / MERGE")
         c.setStrokeColor(colors.HexColor("#536580"))
         c.rect(170, 42, 292, 52, fill=0, stroke=1)
         for offset in (13, 26, 39):
@@ -546,9 +547,9 @@ def build_story() -> list:
             ["Page", "Purpose"],
             [
                 ["Dashboard", "Connected-card status, destination space, manual import, monitor pause, and immediate scan."],
-                ["Library management", "Named local, mounted-network, and removable destinations, default selection, and versioned library metadata."],
+                ["Libraries", "Set up named local, mounted-network, and removable destinations, choose the default, and maintain versioned library metadata."],
                 ["Cards and drives", "Guided onboarding, offline profiles, identity folders, and connection status."],
-                ["Existing library", "Follow Source, Organize, and Review steps before confirming a folder import."],
+                ["Import or merge", "Follow Source, Destination, and Review steps before adding files from another folder or library."],
                 ["Digest inboxes", "Retain varied incoming folders, run or monitor copy ingestion, and review per-file state."],
                 ["Travel sync", "Separate tabs for direct laptop libraries and publish/catch hubs on SMB, USB, or synchronized folders."],
                 ["Library export", "Scan the master library, select captures or groups, and make verified copy-only editing exports."],
@@ -595,7 +596,7 @@ def build_story() -> list:
     story += chapter("4. Camera metadata and folder organization")
     story += [
         p("Named library destinations", "h2"),
-        p("Library management retains multiple primary destinations and one default. A destination may be local, removable, or a network folder already mounted and authenticated by the operating system. Each library keeps versioned identity, migration state, manifests, and session records under its own .photocard-organizer folder. Upgrade metadata requires a separate confirmation and never changes media files."),
+        p("Libraries retains multiple primary destinations and one default. Set up library creates or connects a destination; connecting an existing folder does not scan, import, or move media. A destination may be local, removable, or a network folder already mounted and authenticated by the operating system. Each library keeps versioned identity, migration state, manifests, and session records under its own .photocard-organizer folder. Initialize, check, upgrade, or repair metadata requires a separate confirmation and never changes media files."),
         p("Camera make and model are extracted automatically from EXIF when available. ExifTool is preferred when installed; Pillow and ExifRead provide additional fallbacks. The Camera folder token resolves in this order:"),
         Workflow(["Card camera override", "EXIF model", "EXIF make", "Card display name"]),
         callout(
@@ -641,15 +642,15 @@ def build_story() -> list:
         PageBreak(),
     ]
 
-    story += chapter("5. Organize an existing library")
+    story += chapter("5. Import or merge a library")
     story += [
-        p("Use <b>Existing library</b> for media already stored in a normal folder. This workflow never creates a .photocard identity or portable history inside the source."),
+        p("Use <b>Import or merge</b> for media already stored in a normal folder, another managed library, a backup, or a removable transfer drive. This workflow never creates a .photocard identity or portable history inside the source."),
     ]
     story += steps(
         [
-            ("Source", "Select the existing folder, accept or edit its import label, and choose whether the scan includes subfolders. Folder selection does not open another dialog or begin analysis."),
-            ("Organize", "Choose a managed destination, optional named folder route, Copy or Move, enabled media types, folder layout, and optional camera override. Analyze source folders only when a read-only editable mapping would be useful."),
-            ("Review", "Read the exact scan scope, destination, operation, media, organization, verification, and backup plan. Save + Process opens the final confirmation, saves the reviewed settings, and only then starts the scan; Move then receives the separate checksum-and-deletion warning."),
+            ("Source", "Select the source folder, accept or edit its source name, and choose whether the scan includes subfolders. Folder selection does not open another dialog or begin analysis."),
+            ("Destination", "Choose the receiving library, optional import grouping, Copy or verified Move, enabled media types, folder layout, and optional camera override. Event/project fields appear only for a named grouping. Analyze source folders only when a read-only editable mapping would be useful."),
+            ("Review", "Read the exact scan scope, destination, operation, media, organization, verification, and backup plan. Save settings + Import opens the final confirmation, saves the reviewed settings, and only then starts the scan; Move then receives the separate checksum-and-deletion warning."),
         ]
     )
     story += [
@@ -887,7 +888,7 @@ def build_story() -> list:
                 ["The in-app manual is unavailable", "Repair the installed package or rebuild the release so the PDF version matches the application version exactly."],
                 ["Tray icon is absent on Linux", "Verify StatusNotifierItem/AppIndicator support. GNOME may need an AppIndicator extension. The window remains usable without tray support."],
                 ["Scrolling appears inactive", "Place the pointer over the form area. Lists, tables, and text regions intentionally handle their own wheel events."],
-                ["An import action asks to save first", "Save settings is highlighted because visible controls differ from the saved configuration. Save before normal processing, or use the reviewed Existing library Save + Process action."],
+                ["An import action asks to save first", "Save settings is highlighted because visible controls differ from the saved configuration. Save before normal processing, or use the reviewed Import or merge action and its Save settings + Import button."],
             ],
             [2.0 * inch, 5.05 * inch],
         ),
@@ -924,7 +925,7 @@ def build_story() -> list:
         p("Use <b>--digest-inbox PROFILE_ID</b> more than once to run selected saved profiles, or <b>--digest-all</b> for every enabled profile. Move operations from the command line require the explicit <b>--confirm-move</b> flag. Without it, destructive work remains blocked."),
         p("Validate the release", "h2"),
         code("python -m unittest discover -s tests -v"),
-        p(f"Version {VERSION} includes 117 focused automated checks for named libraries, versioned metadata migration, organization, bracket confidence and I/O, folder recursion, retained profiles, verified moves, Digest Inbox repeat safety and background polling, local and portable records, replicas and transfer hubs, travel-source reconciliation, grouped editing exports, retries, large conflict paging/search/bulk review, portable settings, packaging/icon contracts, UI workflows, space refusal, source mutation, destination races, timestamps, and single-instance activation."),
+        p(f"Version {VERSION} includes 120 focused automated checks for named libraries, versioned metadata migration, organization, bracket confidence and I/O, folder recursion, retained profiles, verified moves, Digest Inbox repeat safety and background polling, local and portable records, replicas and transfer hubs, travel-source reconciliation, grouped editing exports, retries, large conflict paging/search/bulk review, portable settings, packaging/icon contracts, UI workflows, space refusal, source mutation, destination races, timestamps, and single-instance activation."),
         PageBreak(),
     ]
 
@@ -936,6 +937,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.7.1", "2026-07-31", "Simplified Libraries and Import or merge workflows, clearer metadata actions, destination carry-over, and focused progressive disclosure."],
                 ["0.7.0", "2026-07-28", "Named libraries, schema-5 and library metadata migration, named import routes, Month and conditional long-exposure folders, saved-settings enforcement, and persistent progress."],
                 ["0.6.1", "2026-07-27", "Large/deep library analysis clarity, twelve editable levels, bounded-result transparency, and clearly named Windows maintenance."],
                 ["0.6.0", "2026-07-27", "Guided existing-library import, explicit structure analysis, focused Travel tabs, in-app changelog, and clearer disabled actions."],
