@@ -2,33 +2,43 @@
 
 Photo Card Organizer is a Windows and Linux desktop/tray application for safely
 importing camera cards, folders, and existing photo collections into organized
-libraries. Copy is the default; optional moves verify every destination and
-required session record before deleting a source file.
+libraries. Copy is the default; transfers between filesystems verify destinations
+and required records before source deletion. In-place reorganization uses logged,
+no-overwrite renames when the source and destination share a filesystem.
 
 ## Highlights
 
 - Import multiple camera cards, ordinary folders, and varied existing libraries.
 - Organize JPEG, RAW, video, and sidecar files from EXIF/XMP metadata.
-- Use independent folder rules for date, month, camera, location, rating, media,
+- Use independent folder rules for date, month, day, camera, location, rating, media,
   named shoots, and high-confidence long-exposure brackets.
 - Manage multiple local, removable, or OS-mounted network libraries and backups.
 - Monitor retained Digest Inboxes, travel libraries, and shared USB/SMB/cloud
   folders without repeatedly copying unchanged files.
 - Preserve exact duplicates and filename conflicts for paged, side-by-side review.
-- Export individual captures or complete JPEG/RAW/sidecar and sequence groups.
+- Reorganize in place with an optional detailed preview and a final confirmation.
+- Merge a library by content and migrate to a new folder with verified copying.
+- Export media by type and capture-date range, with optional sidecars and groups.
 - Keep matching portable and local per-session records with cryptographic checksums.
+- Verify library integrity against stored baselines, or create missing checksums.
 - Protect free-space reserves, interrupted work, migrations, and required replicas.
 - Run through a dark PySide6 interface, system tray monitor, or Windows/Linux CLI.
 
 ## Release And Documentation
 
 - [Release downloads](https://github.com/latexink/PhotoCardOrganizer/releases)
-- [Version 0.7.1 user guide](output/pdf/PhotoCardOrganizer-0.7.1-User-Guide.pdf)
+- [Version 0.10.0 user guide](output/pdf/PhotoCardOrganizer-0.10.0-User-Guide.pdf)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release build and verification](PACKAGING.md)
 
-Version 0.7.1 is an unsigned private preview.
+Version 0.10.0 is an unsigned private preview.
+
+Libraries > Merge library previews content-based deduplication against the selected library using saved organization rules. Libraries > Migrate library verifies a copy, including metadata, to an empty folder before updating its location; originals remain for manual cleanup. Close other clients using either library first.
+
+Version 0.10.0 adds manual Integrity checks, optional-preview reorganization, same-filesystem renames, and streaming copy verification. Scheduled integrity checks, automatic media repair, a full media-routing settings UI, and a consolidated multi-source/clone wizard remain planned. Ordinary imports and exports retain their selected verification settings.
+
+New configurations use 30-second connection checks and gradually reduce unchanged-card file scans to a configurable 300-second maximum. `Scan now` bypasses the delay. Saved intervals are preserved, and unchanged metadata and catalog records are reused to reduce disk activity.
 
 <details>
 <summary><strong>Technical and workflow reference</strong></summary>
@@ -63,7 +73,9 @@ The fast local index, pending-transfer recovery data, conflict-review queue, and
 
 ### Windows package
 
-Run `PhotoCardOrganizer-Installer-0.7.1.exe`. This is the separate installer/uninstaller; `PhotoCardOrganizer.exe` is the installed application launcher. The one offline installer contains the application, Python runtime, PySide6 dependencies, and versioned user guide, so client machines do not need Python or internet access. The unsigned Inno Setup wizard installs for the current Windows account without normally requiring administrator access. When it detects the same stable application ID, the installer offers Repair/Upgrade or Uninstall. The Start Menu group also includes `Uninstall Photo Card Organizer`; desktop and login-monitoring shortcuts remain selectable tasks.
+Run `PhotoCardOrganizer-Installer-0.10.0.exe`. This is the separate installer/uninstaller; `PhotoCardOrganizer.exe` is the installed application launcher. The one offline installer contains the application, Python runtime, PySide6 dependencies, and versioned user guide, so client machines do not need Python or internet access. The unsigned Inno Setup wizard installs for the current Windows account without normally requiring administrator access. When it detects the same stable application ID, the installer offers Repair/Upgrade or Uninstall. The Start Menu group also includes `Uninstall Photo Card Organizer`; desktop and login-monitoring shortcuts remain selectable tasks.
+
+Desktop and Start Menu shortcuts are selected by default on a new installation. Repairs and upgrades retain the saved shortcut choices; select Desktop shortcut in the wizard to add one to an existing installation. The application icon is included in launch shortcuts, the executable, installer, Installed Apps entry, application windows, and tray. Launch shortcuts share the application's Windows taskbar identity. Pinning to the taskbar remains a Windows user action.
 
 Application settings are stored separately under `%APPDATA%\PhotoCardOrganizer`. Repair and upgrade operations preserve them. The uninstaller preserves settings, card profiles, and local application logs by default and asks before removing them. Imported media, destination transfer records, library manifests, and card identity/history folders are never uninstall targets.
 
@@ -72,15 +84,15 @@ Application settings are stored separately under `%APPDATA%\PhotoCardOrganizer`.
 Install the Debian package with:
 
 ```bash
-sudo apt install ./photo-card-organizer_0.7.1_amd64.deb
+sudo apt install ./photo-card-organizer_0.10.0_amd64.deb
 photo-card-organizer
 ```
 
 Or make the AppImage executable and run it without installation:
 
 ```bash
-chmod +x PhotoCardOrganizer-0.7.1-x86_64.AppImage
-./PhotoCardOrganizer-0.7.1-x86_64.AppImage
+chmod +x PhotoCardOrganizer-0.10.0-x86_64.AppImage
+./PhotoCardOrganizer-0.10.0-x86_64.AppImage
 ```
 
 Both packages expose the same CLI. Arguments are forwarded to the bundled executable, including `--scan-once`, `--dry-run`, folder imports, identity creation, settings import/export, autostart management, and explicit move confirmation. Debian upgrades preserve per-user configuration under `${XDG_CONFIG_HOME:-$HOME/.config}/PhotoCardOrganizer`; removing the package also leaves this data in place.
@@ -119,7 +131,7 @@ The Linux developer installer detects Python 3.11+, creates or repairs `.venv`, 
 
 ExifTool is optional. When it is available on `PATH`, the app uses it for broader RAW and video metadata coverage. Files still transfer without ExifTool; unsupported metadata falls back to file modification time and the card identity.
 
-Existing schema-1 through schema-4 configuration files are read by version 0.7.1. Before the application writes a migrated schema-5 file, it saves the original under the adjacent `backups` directory. Schema 5 retains the prior destination as a named default library and adds long-exposure organization settings. Library metadata upgrades separately back up older `library.json` files and atomically replace them. A configuration or library created by a newer, unsupported release is rejected without being rewritten.
+Existing schema-1 through schema-4 configuration files are read by version 0.10.0. Before the application writes a migrated schema-5 file, it saves the original under the adjacent `backups` directory. Schema 5 retains the prior destination as a named default library and adds long-exposure organization settings. Library metadata upgrades separately back up older `library.json` files and atomically replace them. A configuration or library created by a newer, unsupported release is rejected without being rewritten.
 
 ## First Setup
 
@@ -154,7 +166,7 @@ The queue table can be filtered by all, pending, processed, failed, or conflict 
 `Travel sync` supports two return-home workflows:
 
 - A retained direct source may be a laptop library, UNC path such as `\\FIELD-LAPTOP\Pictures\Travel Library`, or mounted travel drive. Its stable profile ID survives a changed mount path. Catching is always copy-only and the desktop manifest skips files it already handled.
-- The `Shared hubs` tab accepts a removable USB drive, SMB/NAS folder, mounted network drive, or locally synchronized Google Drive/other cloud folder. The app works with the local folder exposed by the operating system; version 0.7.1 does not require or store direct Google API credentials.
+- The `Shared hubs` tab accepts a removable USB drive, SMB/NAS folder, mounted network drive, or locally synchronized Google Drive/other cloud folder. The app works with the local folder exposed by the operating system; version 0.10.0 does not require or store direct Google API credentials.
 
 Each hub profile has exactly one role on a client:
 
@@ -165,9 +177,25 @@ After a catch is recorded in the local manifest, the consumer writes a matching 
 
 Use a separate producer channel for every laptop or SMB-capable tablet. A tablet that cannot run Photo Card Organizer may upload supported media into its assigned `Producers/TABLET` folder. A USB hub can be safely ejected after publication completes, then attached to a catch client; if its drive letter or mount point changes, edit the saved hub folder before running it. Keep clients in one role per hub to prevent circular publication. SMB authentication, Google Drive sign-in, offline-file availability, and cloud quota remain the responsibility of the operating system or sync client.
 
+## Reorganize a Library
+
+In `Libraries`, select a library and choose `Reorganize library`. Choose media types and a folder preset, such as `Separate by media type`. `Reorganize` calculates the plan and opens a final confirmation; `Preview changes` is optional and shows current/proposed paths first. Filenames are retained. Optional settings commit the layout for future imports and remove only previously scanned folders left empty.
+
+Same-filesystem moves use no-overwrite renames without copying or hashing media. When every file in a folder maps to an unchanged relative layout, the whole folder can be renamed together. Unknown files prevent that shortcut. Cross-filesystem moves still hash during copying and compare the destination once before source deletion. Required backup copies and durable operation records are retained. Conflicts go to review, and interrupted rename catalog updates can resume without recopying files. Keep an independent backup.
+
+`Create missing checksums for future integrity checks` is off by default. Enabling it reads previously unrecorded files once; known checksums follow renamed files without being recalculated. A rename is not an integrity check.
+
+## Check Library Integrity
+
+Open `Integrity` or `Libraries > Verify integrity`. Choose a library and optionally select individual files, then choose `Verify library`. Files are read once and compared with their saved checksum. The report distinguishes matching, changed, missing, and unrecorded files. Changed baselines are never silently replaced, and this operation does not repair media.
+
+`Create missing checksums` establishes a baseline from current contents for unrecorded files only. It cannot establish whether a file was already damaged. Existing baselines are left untouched. A cancelled check saves completed results.
+
+The portable catalog is `.photocard-organizer/integrity/catalog.sqlite3`; reports are in its `reports` subdirectory, with matching local reports under the application data directory. The older `.photocard-organizer/integrity.sqlite3` is migrated atomically when needed and retained as a rollback copy. Verification reports record checks without rewriting unchanged baselines. Do not compress the live SQLite catalog or its journal files; it needs normal random access and transactional writes.
+
 ## Export for Editing
 
-`Library export` reads the desktop master without modifying it. Files sharing a stem and corresponding organized path are represented as one capture. Configured media partitions such as `Photos`, `RAW`, and `Sidecars` are normalized during matching, so the files belonging to one exposure stay together even when their media rules use separate top-level folders. Short adjacent exposures are labeled as bracket/burst groups; regular runs of at least three captures are labeled as interval sequences. Select one row, several rows, or a complete detected group.
+Choose `Libraries > Export media` or select a named library in `Library export`. Filter by media type and an inclusive capture-date range, then select individual rows, all matching captures, or a detected group. Group expansion respects active filters, and matching sidecars are optional. Files sharing a stem and corresponding organized path are represented as one capture; media partitions such as `Photos`, `RAW`, and `Sidecars` are normalized. Scanning does not modify source files or change the default import library.
 
 Exports are copy-only, use SHA-256 verification, honor the configured destination free-percent and free-GB reserves, preserve different-content filename conflicts with the configured suffix, and write a separate JSON Lines export-session record under `EDITING_FOLDER/.photocard-organizer/export-sessions`. Older root-level export records are migrated there when the folder is reused. Matching files already present are verified and reused. A source file that changes during export is reported and no partial copy is committed. The editing folder must neither be inside nor contain the managed master library.
 
@@ -216,9 +244,9 @@ Transfer-record names additionally support `{computer}`, `{session}`, `{instance
 
 ## Conflicts, Space, and Errors
 
-Unattended and manual imports have separate behavior. Background scans never open a dialog; they apply the saved policy and write the result to Activity. Manual imports can pause for a decision and optionally apply that answer to the rest of the session.
+Different-content filename collisions never pause an import. The existing file remains in place, the incoming file is preserved under the configured local conflict-review folder, and the collision is queued for later review. Other safety decisions, such as low space or file errors, retain their configured unattended and manual behavior.
 
-Same-name conflicts are classified by cryptographic content comparison. Different content supports `ask`, `rename`, `conflict_folder`, and `skip`; exact content supports `rename`, `conflict_folder`, and `skip`. The default preserves both files with a configurable appendage such as `_{number}` or ` ({number})`. Conflict-folder placement retains the normal organized hierarchy below the configured conflict folder.
+Same-name conflicts are classified by cryptographic content comparison. Different content is always preserved in the conflict-review folder; exact content supports `rename`, `conflict_folder`, and `skip`. Configurable appendages such as `_{number}` or ` ({number})` remain available for exact duplicates and repeated names inside the conflict folder. Conflict-folder placement retains the normal organized hierarchy below the configured conflict folder.
 
 Every preserved conflict is added to `Conflict review`. The dark review screen shows existing and incoming files side by side, including previews where Pillow supports the format, size, modification time, paths, and review status. RAW files without a decodable preview still show their file details and can be opened externally. SQL-backed search and 200-record pages keep large queues bounded; rows support multi-selection and bulk review-status updates without modifying either media file.
 
@@ -285,7 +313,7 @@ For an installed Linux package, replace `python app.py` with `photo-card-organiz
 ```bash
 photo-card-organizer --scan-once --dry-run
 photo-card-organizer --import-folder /mnt/camera-backup --no-subfolders
-./PhotoCardOrganizer-0.7.1-x86_64.AppImage --print-config
+./PhotoCardOrganizer-0.10.0-x86_64.AppImage --print-config
 ```
 
 Create an identity folder without the GUI:

@@ -9,6 +9,7 @@ from pathlib import Path
 from .digest import run_digest_profile
 from .models import ActivityEvent
 from .organizer import Organizer
+from .source_monitor import SourceDiscovery
 from .transfer_hub import (
     catch_sources,
     source_entries,
@@ -29,6 +30,9 @@ class MonitorService:
         self._last_event: dict[str, float] = {}
         self._last_hub_scan: dict[str, float] = {}
         self._last_digest_scan: dict[str, float] = {}
+        self._discovery = SourceDiscovery()
+        self._card_schedule: dict[tuple[str, str], tuple[float, float]] = {}
+        self._force_scan = threading.Event()
 
     @property
     def is_paused(self) -> bool:
@@ -61,12 +65,13 @@ class MonitorService:
         return self.is_paused
 
     def scan_now(self) -> None:
+        self._force_scan.set()
         self._wake_event.set()
 
     def update_config(self, config: dict) -> None:
         with self._config_lock:
             self._config = copy.deepcopy(config)
-        self._wake_event.set()
+        self.scan_now()
 
     def run_exclusive(self, callback: Callable[[], None]) -> None:
         with self._scan_lock:
@@ -87,14 +92,13 @@ class MonitorService:
         self._send(ActivityEvent("info", "Background monitoring started."), force=True)
         while not self._stop_event.is_set():
             config = self._config_snapshot()
-            poll_seconds = max(1.0, float(config["monitor"].get("poll_seconds", 5)))
+            poll_seconds = max(1.0, float(config["monitor"].get("poll_seconds", 30)))
             if not self._paused.is_set():
                 try:
                     with self._scan_lock:
-                        organizer = Organizer(config, event_callback=self._send)
-                        results, errors = organizer.scan_all(allow_destructive=False)
+                        results, errors = self._scan_connected_cards(config)
                         hub_imported, hub_errors = self._catch_hubs(
-                            config, organizer
+                            config, None
                         )
                         digest_imported, digest_errors = self._digest_inboxes(
                             config
@@ -134,8 +138,42 @@ class MonitorService:
             self._wake_event.clear()
         self._send(ActivityEvent("info", "Background monitoring stopped."), force=True)
 
+    def _scan_connected_cards(self, config: dict):
+        force = self._force_scan.is_set()
+        self._force_scan.clear()
+        previous = {(card.card_id, str(card.root)): card for card in self._discovery.cards}
+        cards, errors, changed = self._discovery.poll(config, force=force)
+        for error in errors:
+            self._send(ActivityEvent("error", error))
+        if force:
+            self._card_schedule.clear()
+        elif changed:
+            current = {(card.card_id, str(card.root)): card for card in cards}
+            self._card_schedule = {
+                key: schedule for key, schedule in self._card_schedule.items()
+                if key in current and previous.get(key) == current[key]
+            }
+        now = time.monotonic()
+        interval = max(1.0, float(config["monitor"].get("poll_seconds", 30)))
+        maximum = max(interval, float(config["monitor"].get("idle_scan_max_seconds", 300)))
+        results = []
+        organizer = None
+        for card in cards:
+            key = (card.card_id, str(card.root))
+            due, delay = self._card_schedule.get(key, (0.0, interval))
+            if now < due:
+                continue
+            if organizer is None:
+                organizer = Organizer(config, event_callback=self._send)
+            result = organizer.scan_cards([card], allow_destructive=False)[0]
+            results.append(result)
+            idle = not (result.imported or result.blocked or result.failed)
+            delay = min(maximum, delay * 2) if idle else interval
+            self._card_schedule[key] = (time.monotonic() + delay, delay)
+        return results, errors
+
     def _catch_hubs(
-        self, config: dict, organizer: Organizer
+        self, config: dict, organizer: Organizer | None
     ) -> tuple[int, list[str]]:
         imported = 0
         errors: list[str] = []
@@ -155,6 +193,8 @@ class MonitorService:
             cards, hub_errors = catch_sources(config, hub)
             errors.extend(hub_errors)
             for card in cards:
+                if organizer is None:
+                    organizer = Organizer(config, event_callback=self._send)
                 entries = source_entries(organizer, card)
                 result = organizer.scan_card(card, allow_destructive=False)
                 imported += result.imported

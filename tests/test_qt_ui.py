@@ -5,13 +5,14 @@ import os
 import tempfile
 import time
 import unittest
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QPoint, QPointF, QItemSelectionModel, Qt
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtGui import QFontDatabase, QWheelEvent
 from PySide6.QtWidgets import (
     QApplication,
     QAbstractItemView,
@@ -25,6 +26,9 @@ from PySide6.QtWidgets import (
 from photocard.config import normalize_config, normalize_digest_inbox
 from photocard.discovery import folder_import_source, write_card_identity
 from photocard.models import ActivityEvent
+from photocard.library_tools import CaptureGroup, LibraryItem, build_capture_sets
+from photocard.qt_library_tools import LibraryJobDialog, ReorganizationDialog
+from photocard.reorganization import build_reorganization_plan
 from photocard.qt_dialogs import (
     CardOnboardingWizard,
     DigestInboxDialog,
@@ -33,14 +37,118 @@ from photocard.qt_dialogs import (
 )
 from photocard.qt_common import initial_import_summary
 from photocard.qt_theme import application_icon, configure_application
-from photocard.qt_window import PAGE_NAMES, PhotoCardApp, directory_available
+from photocard.qt_window import (
+    NAVIGATION_SECTIONS,
+    PAGE_NAMES,
+    PhotoCardApp,
+    directory_available,
+)
 from photocard.structure_detection import detect_existing_structure
 
 
 class QtWorkflowTests(unittest.TestCase):
+    def test_reorganization_can_proceed_without_detailed_preview(self):
+        root = Path(self.window.config["destination_root"])
+        (root / "old").mkdir(parents=True, exist_ok=True)
+        source = root / "old/video.mp4"
+        source.write_bytes(b"fixture")
+        dialog = ReorganizationDialog(self.window, self.window.config)
+        self.assertTrue(dialog.process.isEnabled())
+        dialog.request_process()
+        deadline = time.monotonic() + 10
+        while dialog._running and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertFalse(dialog._running)
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted, dialog.status.text())
+        self.assertIsNotNone(dialog.plan)
+        self.assertTrue(source.exists(), "The final parent confirmation must precede file changes")
+        self.assertFalse((root / "Videos/video.mp4").exists())
+        dialog.deleteLater()
+
+    def test_integrity_workflow_pauses_monitor_and_produces_results(self):
+        from photocard.integrity import IntegrityCatalog, checksum
+        root = Path(self.window.config["destination_root"])
+        root.mkdir(parents=True, exist_ok=True)
+        source = root / "image.jpg"
+        source.write_bytes(b"fixture")
+        catalog = IntegrityCatalog(root, self.base / "local")
+        catalog.record(source, checksum(source), "sha256", verified=True)
+        self.window.show_page("Integrity")
+        panel = self.window.integrity_panel
+        was_paused = self.window.monitor.is_paused
+        with patch("photocard.integrity.local_state_directory", return_value=self.base / "local"), patch.object(
+            self.window, "_saved_processing_config", return_value=self.window.config
+        ):
+            panel.start(False)
+            self.assertTrue(self.window.monitor.is_paused)
+            self.assertTrue(self.window._manual_import_running)
+            deadline = time.monotonic() + 10
+            while panel.running and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.01)
+            self.assertFalse(panel.running)
+        self.assertFalse(self.window._manual_import_running)
+        self.assertEqual(self.window.monitor.is_paused, was_paused)
+        self.assertEqual(panel.model.rows, [(str(source), "Verified")])
+        self.assertTrue(panel.report.is_file())
+        self.assertTrue(panel.open_report.isEnabled())
+
+    def test_library_job_preview_and_processing_complete(self):
+        from photocard.library_jobs import execute_library_job
+        source = self.base / "incoming"
+        source.mkdir()
+        (source / "photo.jpg").write_bytes(b"media")
+        dialog = LibraryJobDialog(self.window, self.window.config, [source])
+        dialog.start_preview()
+        deadline = time.monotonic() + 10
+        while dialog._running and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.01)
+        self.assertFalse(dialog._running)
+        self.assertIsNotNone(dialog.plan, dialog.status.text())
+        self.assertTrue(dialog.process.isEnabled())
+        with patch("photocard.qt_library_tools.QMessageBox.warning", return_value=QMessageBox.StandardButton.Yes), patch(
+            "photocard.qt_library_tools.execute_library_job",
+            side_effect=lambda plan, **kwargs: execute_library_job(plan, local_root=self.base / "local", **kwargs),
+        ):
+            dialog.confirm_process()
+            deadline = time.monotonic() + 10
+            while dialog._running and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.01)
+            self.assertFalse(dialog._running)
+            self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted, dialog.status.text())
+        dialog.deleteLater()
+
+    def test_library_job_cancel_waits_for_worker(self):
+        import threading
+        from photocard.library_jobs import build_library_job
+        gate = threading.Event()
+        source = self.base / "incoming"
+        source.mkdir()
+        dialog = LibraryJobDialog(self.window, self.window.config, [source])
+        def delayed(*args, **kwargs):
+            gate.wait(5)
+            return build_library_job(*args, **kwargs)
+        with patch("photocard.qt_library_tools.build_library_job", side_effect=delayed):
+            dialog.start_preview()
+            dialog.reject()
+            self.assertTrue(dialog._running)
+            self.assertTrue(dialog._cancel.is_set())
+            gate.set()
+            deadline = time.monotonic() + 10
+            while dialog._running and time.monotonic() < deadline:
+                self.app.processEvents()
+                time.sleep(0.01)
+            self.assertFalse(dialog._running)
+        dialog.deleteLater()
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.app = QApplication.instance() or QApplication([])
+        if os.name == "nt":
+            QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf")
         configure_application(cls.app)
 
     def setUp(self) -> None:
@@ -85,6 +193,25 @@ class QtWorkflowTests(unittest.TestCase):
 
     def test_progressive_navigation_and_tooltips_are_present(self) -> None:
         self.assertEqual(len(PAGE_NAMES), self.window.stack.count())
+        self.assertEqual(
+            set(PAGE_NAMES),
+            {
+                page_name
+                for _section_name, pages in NAVIGATION_SECTIONS
+                for page_name in pages
+            },
+        )
+        self.assertEqual(
+            len(PAGE_NAMES) + len(NAVIGATION_SECTIONS),
+            self.window.navigation.count(),
+        )
+        self.assertEqual("WORKSPACE", self.window.navigation.item(0).text())
+        self.assertFalse(self.window.navigation.item(0).flags())
+        self.window.show_page("Library export")
+        self.assertEqual(
+            "Library export",
+            self.window.navigation.currentItem().data(Qt.ItemDataRole.UserRole),
+        )
         self.assertIn(
             'QPushButton[accent="true"]:disabled',
             self.app.styleSheet(),
@@ -124,7 +251,7 @@ class QtWorkflowTests(unittest.TestCase):
             self.window.existing_next_button,
             self.window.copy_verification_combo,
             self.window.move_checksum_combo,
-            self.window.conflict_policy_combo,
+            self.window.conflict_policy_label,
             self.window.minimum_percent_spin,
             self.window.replica_verification_combo,
             self.window.bracket_seconds_spin,
@@ -184,8 +311,8 @@ class QtWorkflowTests(unittest.TestCase):
         )
         self.assertTrue(self.window.destination_edit.isReadOnly())
         self.assertGreaterEqual(
-            self.window.transfer_progress.minimumWidth(),
-            360,
+            self.window.transfer_progress.width(),
+            160,
         )
         self.assertTrue(self.window.transfer_progress.isTextVisible())
         self.assertTrue(self.window.bracket_enabled_check.toolTip())
@@ -347,6 +474,8 @@ class QtWorkflowTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual("Set up library", self.window.add_library_button.text())
+        self.assertEqual("Export media", self.window.library_export_button.text())
+        self.assertEqual("Reorganize library", self.window.reorganize_selected_library_button.text())
         self.assertEqual(
             "Import or merge",
             self.window.import_or_merge_button.text(),
@@ -448,6 +577,108 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(dialog.storage_combo.isHidden())
         dialog.close()
         dialog.deleteLater()
+
+    def test_export_filters_and_group_expansion_never_add_hidden_photos(self):
+        root = self.base / "library"
+        items = []
+        for stem, kind, ext in (("a", "photo", "jpg"), ("a", "video", "mp4"), ("b", "photo", "jpg")):
+            path = root / f"{stem}.{ext}"
+            path.write_bytes(b"fixture")
+            items.append(LibraryItem(path, Path(path.name), kind, datetime(2024, 3, 4)))
+        self.window.library_captures = build_capture_sets(items)
+        self.window.library_groups = [CaptureGroup("synthetic", "bracket", tuple(c.capture_id for c in self.window.library_captures), datetime(2024, 3, 4))]
+        self.window._export_scanned_root = root
+        combo = self.window.export_media_combo
+        combo.setCurrentIndex(combo.findData("video"))
+        self.window._refresh_export_table()
+        self.assertEqual(self.window.export_model.rowCount(), 1)
+        self.window.export_table.selectAll()
+        self.window._select_export_groups()
+        output = self.base / "export"
+        output.mkdir()
+        with patch("photocard.qt_window.QFileDialog.getExistingDirectory", return_value=str(output)), \
+                patch("photocard.qt_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+                patch("photocard.qt_window.QMessageBox.information"):
+            self.window._export_selected_captures()
+        self.assertEqual(len(list(output.rglob("*.mp4"))), 1)
+        self.assertEqual(len(list(output.rglob("*.jpg"))), 0)
+
+    def test_export_button_carries_named_library_without_changing_default(self):
+        default_id = self.window.default_library_id
+        other_root = self.base / "other-library"
+        other_root.mkdir()
+        other = {"id": "other", "name": "Other library", "root": str(other_root), "enabled": True, "kind": "local"}
+        self.window.library_destinations.append(other)
+        self.window.config["library_destinations"] = copy.deepcopy(self.window.library_destinations)
+        self.window._refresh_library_destinations()
+        self.window.library_table.selectRow(1)
+        self.window._open_library_export()
+        self.assertEqual(self.window.export_library_combo.currentData(), "other")
+        self.assertEqual(self.window.config["default_library_id"], default_id)
+        self.assertEqual(self.window.export_library_label.text(), str(other_root))
+        (other_root / "only.mp4").write_bytes(b"fixture")
+        self.window._set_settings_dirty(False)
+        self.window._scan_export_library()
+        self.assertEqual(self.window._export_scanned_root, other_root)
+        self.assertEqual(len(self.window.library_captures), 1)
+        self.window.export_library_combo.setCurrentIndex(0)
+        self.assertEqual(self.window.library_captures, [])
+        self.assertFalse(self.window.export_selected_button.isEnabled())
+
+    def test_reorganization_dialog_preview_invalidates_on_layout_change(self):
+        source = self.base / "library" / "clip.mp4"
+        source.write_bytes(b"fixture")
+        dialog = ReorganizationDialog(self.window, self.window.config)
+        dialog.start_preview()
+        deadline = time.monotonic() + 10
+        while dialog._running and time.monotonic() < deadline:
+            self.app.processEvents()
+            time.sleep(0.02)
+        self.assertIsNotNone(dialog.plan)
+        self.assertTrue(dialog.process.isEnabled())
+        self.assertTrue(source.exists())
+        self.assertFalse((source.parent / "Videos").exists())
+        dialog.preset.setCurrentIndex(1)
+        self.assertIsNone(dialog.plan)
+        self.assertTrue(dialog.process.isEnabled())
+        dialog.reject()
+
+    def test_reorganization_saves_layout_only_after_confirmation(self):
+        from unittest.mock import Mock
+        source = self.base / "library" / "old" / "clip.mp4"
+        source.parent.mkdir()
+        source.write_bytes(b"fixture")
+        plan = build_reorganization_plan(self.window.config, "Media folder only", {"video"})
+        dialog = Mock()
+        dialog.exec.return_value = QDialog.DialogCode.Accepted
+        dialog.plan = plan
+        dialog.preset.currentText.return_value = "Separate by media type"
+        dialog.save_layout.isChecked.return_value = True
+        dialog.cleanup.isChecked.return_value = True
+        dialog.baselines.isChecked.return_value = False
+        check = Mock()
+        check.isChecked.return_value = True
+        dialog.media = {"video": check}
+        previous = copy.deepcopy(self.window.config)
+        with patch("photocard.qt_window.ReorganizationDialog", return_value=dialog), \
+                patch("photocard.qt_window.QMessageBox.warning", return_value=QMessageBox.StandardButton.No):
+            self.window._reorganize_selected_library()
+        self.assertEqual(self.window.config, previous)
+        self.assertTrue(source.exists())
+        with patch("photocard.qt_window.ReorganizationDialog", return_value=dialog), \
+                patch("photocard.qt_window.QMessageBox.warning", return_value=QMessageBox.StandardButton.Yes):
+            self.window._reorganize_selected_library()
+            deadline = time.monotonic() + 10
+            while self.window._manual_import_running and time.monotonic() < deadline:
+                self.window._drain_queues()
+                self.app.processEvents()
+                time.sleep(0.02)
+        self.assertFalse(self.window._manual_import_running)
+        self.assertFalse(source.exists())
+        self.assertTrue((self.base / "library/Videos/clip.mp4").exists())
+        self.assertEqual(self.window.config["media_rules"]["video"]["folder_segments"], ["Videos"])
+        self.assertEqual(self.window.config["default_library_id"], previous["default_library_id"])
+        self.assertFalse(self.window._settings_dirty)
 
     def test_guided_existing_library_copy_runs_after_final_confirmation(self) -> None:
         self.window.config["monitor"]["settle_seconds"] = 0
@@ -623,7 +854,29 @@ class QtWorkflowTests(unittest.TestCase):
         for page_name, controls in page_layouts.items():
             self.window.show_page(page_name)
             self.app.processEvents()
-            self.assertEqual(2, controls.rowCount(), page_name)
+            page = self.window.stack.currentWidget()
+            for index in range(controls.count()):
+                widget = controls.itemAt(index).widget()
+                if widget is not None and widget.isVisible():
+                    origin = widget.mapTo(page, QPoint(0, 0))
+                    self.assertTrue(page.rect().contains(origin), page_name)
+                    self.assertLessEqual(origin.x() + widget.width(), page.width(), page_name)
+                    self.assertLessEqual(origin.y() + widget.height(), page.height(), page_name)
+        self.assertEqual(0, self.window.navigation.verticalScrollBar().maximum())
+
+    def test_general_settings_remain_saved_and_event_fields_are_conditional(self) -> None:
+        self.window.show_page("General options")
+        self.app.processEvents()
+        self.assertTrue(self.window.poll_spin.isVisible())
+        self.assertTrue(self.window.maintenance_button.isVisible())
+        self.window.poll_spin.setValue(30)
+        self.assertTrue(self.window._settings_dirty)
+        self.assertEqual(30, self.window._collect_config()["monitor"]["poll_seconds"])
+        self.assertEqual("Unsaved changes", self.window.settings_state_label.text())
+        self.window.show_page("Dashboard")
+        self.assertFalse(self.window.import_folder_name_edit.isVisible())
+        self.window.import_folder_mode_combo.setCurrentIndex(1)
+        self.assertTrue(self.window.import_folder_name_edit.isVisible())
 
     def test_conflict_review_fits_inside_minimum_window_body(self) -> None:
         self.window.resize(980, 660)

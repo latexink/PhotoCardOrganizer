@@ -46,6 +46,7 @@ def install_autostart(config_path: Path) -> Path:
             "[Desktop Entry]\n"
             "Type=Application\n"
             "Name=Photo Card Organizer\n"
+            "Icon=photo-card-organizer\n"
             f"Exec={desktop_command}\n"
             "Terminal=false\n"
             "X-GNOME-Autostart-enabled=true\n"

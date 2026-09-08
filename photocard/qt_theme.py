@@ -124,7 +124,7 @@ QPushButton[accent="true"]:disabled {{
 QPushButton[danger="true"] {{
     color: {COLORS['error']};
 }}
-QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QTextEdit, QPlainTextEdit {{
+QLineEdit, QSpinBox, QDoubleSpinBox, QDateEdit, QComboBox, QTextEdit, QPlainTextEdit {{
     min-height: 30px;
     padding: 0 8px;
     background: {COLORS['surface_alt']};
@@ -226,7 +226,7 @@ QListWidget#navigation {{
     padding: 8px;
 }}
 QListWidget#navigation::item {{
-    min-height: 42px;
+    min-height: 32px;
     padding: 0 10px;
     color: {COLORS['muted']};
     border-left: 3px solid transparent;
@@ -241,7 +241,16 @@ QListWidget#navigation::item:selected {{
     background: {COLORS['selection']};
     border-left: 3px solid {COLORS['focus']};
 }}
-QTableWidget, QTreeWidget, QListView {{
+QListWidget#navigation::item:disabled {{
+    min-height: 22px;
+    padding: 0 10px;
+    color: #9f9f9f;
+    background: transparent;
+    border: 0;
+    font-size: 8pt;
+    font-weight: 650;
+}}
+QTableView, QTableWidget, QTreeWidget, QListView {{
     background: {COLORS['surface']};
     alternate-background-color: #2e2e2e;
     border: 1px solid {COLORS['border']};

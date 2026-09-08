@@ -149,7 +149,7 @@ class Workflow(Flowable):
 
 
 class InterfaceMap(Flowable):
-    def __init__(self, width: float = 500, height: float = 285):
+    def __init__(self, width: float = 500, height: float = 350):
         super().__init__()
         self.width = width
         self.height = height
@@ -163,31 +163,28 @@ class InterfaceMap(Flowable):
         c.setFont("Helvetica-Bold", 9)
         c.setFillColor(WHITE)
         c.drawString(18, self.height - 39, "PHOTO CARD ORGANIZER")
-        items = [
-            "Dashboard",
-            "Libraries",
-            "Cards and drives",
-            "Import or merge",
-            "Digest inboxes",
-            "Travel sync",
-            "Library export",
-            "Organization",
-            "Safety and location",
-            "Conflict review",
-            "Activity",
-            "Help & about",
+        sections = [
+            ("WORKSPACE", ["Dashboard", "Libraries", "Cards and drives", "Import or merge", "Digest inboxes"]),
+            ("LIBRARY TOOLS", ["Organization", "Travel sync", "Library export", "Integrity", "Conflict review", "Activity"]),
+            ("SETTINGS", ["Safety and location", "General options", "Help & about"]),
         ]
-        y = self.height - 69
-        for index, item in enumerate(items):
-            if index == 0:
-                c.setFillColor(colors.HexColor("#24466A"))
-                c.roundRect(14, y - 5, 116, 22, 3, fill=1, stroke=0)
-                c.setFillColor(CYAN)
-                c.rect(14, y - 5, 3, 22, fill=1, stroke=0)
-            c.setFillColor(WHITE if index == 0 else colors.HexColor("#C6D0E1"))
-            c.setFont("Helvetica-Bold" if index == 0 else "Helvetica", 7.5)
-            c.drawString(23, y + 2, item)
-            y -= 18
+        y = self.height - 65
+        for section, items in sections:
+            c.setFillColor(colors.HexColor("#9FB2CF"))
+            c.setFont("Helvetica-Bold", 5.8)
+            c.drawString(18, y + 2, section)
+            y -= 13
+            for item in items:
+                if item == "Dashboard":
+                    c.setFillColor(colors.HexColor("#24466A"))
+                    c.roundRect(14, y - 5, 116, 18, 3, fill=1, stroke=0)
+                    c.setFillColor(CYAN)
+                    c.rect(14, y - 5, 3, 18, fill=1, stroke=0)
+                c.setFillColor(WHITE if item == "Dashboard" else colors.HexColor("#C6D0E1"))
+                c.setFont("Helvetica-Bold" if item == "Dashboard" else "Helvetica", 6.6)
+                c.drawString(23, y + 1, item)
+                y -= 15
+            y -= 3
         c.setFillColor(colors.HexColor("#243149"))
         c.roundRect(151, 26, self.width - 163, self.height - 52, 5, fill=1, stroke=0)
         c.setFillColor(WHITE)
@@ -204,15 +201,29 @@ class InterfaceMap(Flowable):
         c.roundRect(170, self.height - 143, 82, 22, 4, fill=1, stroke=0)
         c.setFillColor(WHITE)
         c.setFont("Helvetica-Bold", 7)
-        c.drawCentredString(211, self.height - 136, "IMPORT SELECTED")
+        c.drawCentredString(211, self.height - 136, "REFRESH CARDS")
         c.setFillColor(colors.HexColor("#34445F"))
         c.roundRect(260, self.height - 143, 83, 22, 4, fill=1, stroke=0)
         c.setFillColor(WHITE)
-        c.drawCentredString(301.5, self.height - 136, "IMPORT / MERGE")
+        c.drawCentredString(301.5, self.height - 136, "SCAN NOW")
+        c.setFillColor(colors.HexColor("#34445F"))
+        c.roundRect(170, 151, 292, 38, 4, fill=1, stroke=0)
+        c.setFillColor(WHITE)
+        c.setFont("Helvetica", 7)
+        c.drawString(181, 176, "DESTINATION FOR THIS IMPORT")
+        c.drawString(181, 161, "Library                         Folder organization")
         c.setStrokeColor(colors.HexColor("#536580"))
-        c.rect(170, 42, 292, 52, fill=0, stroke=1)
+        c.rect(170, 80, 292, 52, fill=0, stroke=1)
         for offset in (13, 26, 39):
-            c.line(170, 42 + offset, 462, 42 + offset)
+            c.line(170, 80 + offset, 462, 80 + offset)
+        c.setFillColor(colors.HexColor("#34445F"))
+        c.roundRect(170, 42, 96, 22, 4, fill=1, stroke=0)
+        c.setFillColor(CYAN)
+        c.roundRect(366, 42, 96, 22, 4, fill=1, stroke=0)
+        c.setFillColor(WHITE)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawCentredString(218, 49, "IMPORT / MERGE")
+        c.drawCentredString(414, 49, "IMPORT SELECTED")
 
 
 def make_styles():
@@ -513,7 +524,7 @@ def build_story() -> list:
     story += steps(
         [
             ("Run the installer", f"Open <b>PhotoCardOrganizer-Installer-{VERSION}.exe</b>. This is separate from PhotoCardOrganizer.exe, which launches the installed application. The single offline installer contains Python, PySide6, all application dependencies, and this guide."),
-            ("Choose integration", "Review the per-user destination and select Start Menu, desktop, and login-monitoring shortcuts. The Start Menu group includes the current PDF guide and a clearly named Uninstall shortcut. Administrator access is not normally required."),
+            ("Choose integration", "Desktop and Start Menu shortcuts are selected by default for a new installation; login monitoring is optional. Upgrades retain previous choices, so select Desktop shortcut to add one to an existing installation. Launch shortcuts use the application icon and taskbar identity. The Start Menu group includes the PDF guide and Uninstall shortcut. Pinning to the taskbar remains a Windows user action."),
             ("Install, repair, or remove", "The Ready page summarizes the operation before files are changed. When an installation is detected, the same Installer file offers repair/upgrade or uninstall."),
             ("Launch", "Start Photo Card Organizer from the wizard or selected shortcut. Only one application instance runs; a later launch restores the existing window."),
         ]
@@ -536,7 +547,7 @@ def build_story() -> list:
             "When ExifTool is available on PATH, it expands RAW and video metadata support. Files still transfer without it; unavailable fields fall back to other metadata readers, file time, or the retained card profile.",
         ),
         p("Installation maintenance", "h2"),
-        p("Keep the downloaded Installer file as the single Windows maintenance entry point. Running it again detects the installed package and offers repair/upgrade or uninstall. The application footer reports the detected installation and opens the registered uninstaller; Windows Installed apps and the Start Menu expose the same uninstall path. The uninstaller preserves per-user settings, profiles, and logs by default and never targets imported media or transfer records. Developer environments expose their local scripts."),
+        p("Keep the downloaded Installer file as the single Windows maintenance entry point. Running it again detects the installed package and offers repair/upgrade or uninstall. General options > Installation and maintenance reports the detected installation and opens the registered uninstaller; Windows Installed apps and the Start Menu expose the same uninstall path. The uninstaller preserves per-user settings, profiles, and logs by default and never targets imported media or transfer records. Developer environments expose their local scripts."),
         PageBreak(),
     ]
 
@@ -544,25 +555,27 @@ def build_story() -> list:
     story += [InterfaceMap(), Spacer(1, 8)]
     story += [
         data_table(
-            ["Page", "Purpose"],
+            ["Menu section", "Page", "Purpose"],
             [
-                ["Dashboard", "Connected-card status, destination space, manual import, monitor pause, and immediate scan."],
-                ["Libraries", "Set up named local, mounted-network, and removable destinations, choose the default, and maintain versioned library metadata."],
-                ["Cards and drives", "Guided onboarding, offline profiles, identity folders, and connection status."],
-                ["Import or merge", "Follow Source, Destination, and Review steps before adding files from another folder or library."],
-                ["Digest inboxes", "Retain varied incoming folders, run or monitor copy ingestion, and review per-file state."],
-                ["Travel sync", "Separate tabs for direct laptop libraries and publish/catch hubs on SMB, USB, or synchronized folders."],
-                ["Library export", "Scan the master library, select captures or groups, and make verified copy-only editing exports."],
-                ["Organization", "Independent extensions, one to twelve editable folder levels, and filename rules for photos, RAW, videos, sidecars, and records."],
-                ["Safety and location", "Verification, checksums, conflicts, space reserves, retries, backups, local history, and place names."],
-                ["Conflict review", "Search and page large queues, compare files side by side, and bulk-update review status."],
-                ["Activity", "See transfer, warning, retry, conflict, and error events."],
-                ["Help & about", "Open the version-matched PDF manual, read the in-app changelog, and view project credits."],
+                ["Workspace", "Dashboard", "Choose an import destination, select connected cards, then import. Refresh, scan, and pause monitoring are separate controls."],
+                ["Workspace", "Libraries", "Set up destinations, import or merge, reorganize existing folders, export media, and maintain metadata."],
+                ["Workspace", "Cards and drives", "Guided onboarding, offline profiles, identity folders, and connection status."],
+                ["Workspace", "Import or merge", "Follow Source, Destination, and Review steps before adding files from another folder or library."],
+                ["Workspace", "Digest inboxes", "Retain incoming folders, run or monitor imports, and review per-file state."],
+                ["Library tools", "Organization", "Extensions, folder levels, and filename rules for photos, RAW, videos, sidecars, and records."],
+                ["Library tools", "Travel sync", "Direct laptop libraries and publish/catch hubs on SMB, USB, or synchronized folders."],
+                ["Library tools", "Library export", "Select captures or groups and make verified editing exports."],
+                ["Library tools", "Integrity", "Compare files with saved checksums, establish missing baselines, and open reports."],
+                ["Library tools", "Conflict review", "Search, compare files side by side, and bulk-update review status."],
+                ["Library tools", "Activity", "Transfer, warning, retry, conflict, and error events."],
+                ["Settings", "Safety and location", "Verification, conflicts, space reserves, retries, backups, history, and place names."],
+                ["Settings", "General options", "Connected-card check interval, portable settings import/export, and installation maintenance."],
+                ["Settings", "Help & about", "PDF manual, changelog, version, and project credits."],
             ],
-            [1.35 * inch, 5.7 * inch],
+            [1.1 * inch, 1.35 * inch, 4.6 * inch],
         ),
         Spacer(1, 10),
-        p("Progress remains visible below every page. Save settings is highlighted only when controls differ from the saved processing snapshot. The footer holds library, settings, and installation commands; Help & about opens this guide and the changelog."),
+        p("Progress remains visible below every page. The footer provides Open library, the saved/unsaved status, and Save settings, which is highlighted only when settings change. General options holds the monitoring interval, settings import/export, and installation maintenance. Help & about opens this guide and the changelog."),
         PageBreak(),
     ]
 
@@ -605,7 +618,7 @@ def build_story() -> list:
         ),
         callout(
             "Camera folders reduce collisions, but do not guarantee uniqueness",
-            "Two bodies of the same model normally report the same EXIF camera label, and many cameras restart names such as IMG_0001. For a mixed library, keep the override blank, organize by date and camera, use a filename such as {date:%Y%m%d_%H%M%S}_{original}, and retain the conflict suffix policy.",
+            "Two bodies of the same model normally report the same EXIF camera label, and many cameras restart names such as IMG_0001. For a mixed library, keep the override blank, organize by date and camera, and use a filename such as {date:%Y%m%d_%H%M%S}_{original}. Any remaining different-content collision is preserved in the local conflict-review folder.",
             "warn",
         ),
         p("Folder presets", "h2"),
@@ -627,7 +640,10 @@ def build_story() -> list:
             [
                 ["{date:%Y-%m-%d}", "2026-07-12", "Capture date, then file time fallback"],
                 ["{date:%m - %B}", "07 - July", "Standalone capture month"],
+                ["{date:%d}", "12", "Standalone capture day"],
+                ["{date:%G-W%V}", "2026-W28", "ISO Monday-start week; week-year can differ near New Year"],
                 ["{camera}", "Canon EOS R5", "Override or EXIF camera"],
+                ["{make} / {model}", "Canon / EOS R5", "EXIF make or model"],
                 ["{location}", "Asheville, North Carolina", "GPS and optional online place lookup"],
                 ["{rating}", "4 stars", "EXIF/XMP rating"],
                 ["{card}", "R5 Card A", "Retained card name"],
@@ -665,13 +681,49 @@ def build_story() -> list:
         ),
         callout(
             "Why a separate destination is required",
-            "Scanning and reorganizing in place can cause source/destination overlap, repeated discovery, or name ambiguity. Use a second folder or drive, verify the result, and only then retire the old layout.",
+            "Import or merge requires separate source and destination folders. To change folders inside one managed library, use Libraries > Reorganize library, which freezes the input list and previews moves first.",
             "warn",
         ),
         p("Supported file classes", "h2"),
         p("JPEG/photos, RAW, video, and sidecar files each have an enabled switch, customizable extension list, one to twelve independent folder levels, and a filename template. Add or remove levels in Organization, enter a fixed folder name directly, disable an unneeded class, or set a level to None where no directory segment is desired."),
         p("First backup-library test", "h2"),
-        p("Use an empty destination, Copy, SHA-256 copy verification, recursive scanning, and the normal rename policy for conflicts. Keep Camera override empty so each file can use its own EXIF make/model. Exact-content duplicates are preserved according to the configured duplicate policy; a second run of the same retained source should report no new imports. The current manifest tracks stable sources and expected destination collisions, but is not yet a whole-library fingerprint catalog for identical media arriving through unrelated historical paths."),
+        p("Use an empty destination, Copy, SHA-256 copy verification, and recursive scanning. Keep Camera override empty so each file can use its own EXIF make/model. Different-content filename collisions are preserved automatically in the local conflict-review folder. Exact-content duplicates follow the separately configured duplicate policy; a second run of the same retained source should report no new imports. The current manifest tracks stable sources and expected destination collisions, but is not yet a whole-library fingerprint catalog for identical media arriving through unrelated historical paths."),
+        PageBreak(),
+    ]
+
+    story += chapter("Merge and migrate libraries")
+    story += [
+        p("Merge library", "h2"),
+        p("In Libraries, select the receiving library and choose <b>Merge library</b>. Select one source folder or managed library, save any pending settings, then choose Preview changes. The preview hashes enabled media across both locations, uses saved organization rules for incoming files, and shows full source/destination paths. Existing destination media keeps its layout."),
+        p("Identical content within a media class has one destination even when filenames differ. Different-content name collisions go to the configured Conflicts folder with the organized hierarchy retained. Source media stays in place. Sidecars are compared separately; distinct editing metadata is preserved. Repeat the workflow for additional sources."),
+        p("Confirm and process copies unique files, verifies SHA-256, and saves portable integrity baselines plus local session records. Baseline mismatches are reported without replacing the old checksum. Cancel waits for the current file before releasing the library back to monitoring."),
+        p("Migrate library", "h2"),
+        p("Select the library and choose <b>Migrate library</b>, then choose an empty destination folder. Close other clients using either location. Preview includes media, library identity, transfer history and index files. After verified copying, the destination index paths are updated and the saved library location changes. The default library selection is preserved."),
+        callout("Originals remain available", "Migration retains the original library. Inspect the destination before any manual cleanup. On an interrupted migration, the original location remains active. Retry within the open dialog after resolving the error; after restarting, select a new empty destination and retain the partial copy until reviewed.", "warn"),
+        p("Scope of this preview", "h2"),
+        p("Merge and migration are dedicated Libraries actions. They do not yet replace the older Import or merge wizard. Multi-source consolidation with a clone selector, media-routing controls for general imports, automatic repair, and scheduled integrity checks remain planned. Integrity catalogs detect changes; recovery requires an independent good copy."),
+        PageBreak(),
+    ]
+
+    story += chapter("Reorganize an existing library")
+    story += steps([
+        ("Choose the library", "In Libraries, select an available library and choose Reorganize library. Save any pending settings first. Monitoring pauses while the plan is prepared."),
+        ("Choose the layout", "Separate by media type creates Photos, RAW, Videos, and Sidecars folders. Other presets add date or camera levels; Use current detailed rules keeps the saved folder definitions, including conditional bracket folders. Choose which media classes to include. Filenames are retained."),
+        ("Preview changes (optional)", "Read current and proposed paths, including Already organized and potential Conflict review entries. Preview does not change media or save settings. You can select Reorganize directly to calculate the plan and continue to the final confirmation."),
+        ("Review and reorganize", "Read the explicit move warning and summary before accepting. Use this folder layout for future imports commits only the selected folder rules when processing starts; these rules apply to future imports across libraries and do not change the default library. Remove folders left empty is optional."),
+    ])
+    story += [
+        callout("Preserve an independent backup", "Same-filesystem changes use durable no-overwrite renames without reading media content again. Cross-filesystem moves use a verified destination copy before deleting the original. Required backups and local transfer records must succeed. File changes since planning are deferred; failed catalog updates retain a resumable intent. Existing filenames are never overwritten, including exact duplicates: conflicts are kept in the configured organized conflict folder for review.", "warn"),
+        p("The fixed plan prevents generated files from becoming new inputs. Metadata, identity, and conflict folders are excluded. Local catalog paths follow moved files; historical session logs remain append-only. Compatible folders can move as one rename only when every member is known media; an unrelated file keeps the operation at the individual-file level. Optional checksum creation reads only files with no baseline. On failure, review Activity and retry; do not manually remove a pending rename intent."),
+        p("Location rules use place names already cached locally during preview; no online requests are made. Missing capture dates use file modification time. This action changes folders only: edit filename templates for future imports in Organization or use Import or merge into a separate library for a reviewed rename workflow."),
+        PageBreak(),
+    ]
+
+    story += chapter("Integrity checks")
+    story += [
+        p("Open Integrity or choose Verify integrity from Libraries. Select a library and optionally select individual files, then use Verify library. Each checked file is read once and compared with its saved checksum. Results distinguish Verified, Changed; baseline retained, Missing, and No baseline. A report is saved in the library and matching local application state."),
+        p("Create missing checksums records the current contents only for files without a baseline. It never replaces an existing checksum and cannot prove that a new baseline is an original good copy. Cancel stops after the current read chunk and retains completed results in the report."),
+        callout("Baseline records", "The portable catalog is stored at .photocard-organizer/integrity/catalog.sqlite3. Existing root-level integrity.sqlite3 catalogs are copied atomically into this location when first written and the older file remains as a rollback copy. Do not compress the live SQLite catalog or journal files.", "info"),
         PageBreak(),
     ]
 
@@ -755,22 +807,22 @@ def build_story() -> list:
 
     story += chapter("9. Duplicates and filename conflicts")
     story += [
-        p("Before placement, same-name files are compared by content. Exact-content duplicates and different-content collisions have separate policies. The default preserves both files."),
+        p("Before placement, same-name files are compared by content. A different-content collision never pauses the active task: the existing file stays in place, the incoming file is copied below the local conflict-review folder, and both are queued for review. Exact-content duplicates retain a separate configurable policy."),
         data_table(
             ["Policy", "Result"],
             [
-                ["Rename", "Keep the organized destination and append a configurable value such as _2, (2), or a custom {number} pattern."],
-                ["Conflict folder", "Place the incoming file below the configured conflict root while retaining the normal media/date/camera hierarchy."],
-                ["Skip", "Keep both source and existing destination unchanged; record the decision."],
-                ["Ask", "Manual imports show a decision dialog; the choice can apply to the remaining session."],
+                ["Different content", "Always place the incoming file below the configured local conflict-review root while retaining the normal media/date/camera hierarchy."],
+                ["Exact duplicate: rename", "Keep the organized destination and append a configurable value such as _2, (2), or a custom {number} pattern."],
+                ["Exact duplicate: conflict folder", "Preserve the second copy below the configured conflict-review root."],
+                ["Exact duplicate: skip", "Leave the source and existing destination unchanged and record no new imported copy."],
             ],
             [1.45 * inch, 5.6 * inch],
         ),
         p("Conflict review", "h2"),
         p("Preserved conflicts are queued in Conflict review. SQL-backed search and fixed 200-record pages keep very large histories bounded. Select one row for side-by-side paths, sizes, modification times, and supported image previews. Multi-select routine groups to mark their review status together; this status change never modifies either media file. RAW or video formats without a preview still show details and can be opened externally."),
         callout(
-            "Background scans do not interrupt",
-            "Unattended scans use saved conflict, duplicate, space, and error policies. Only manual imports can pause for an in-the-moment decision.",
+            "Filename conflicts do not interrupt",
+            "Different-content filename collisions are always preserved for later review. Other configured safety conditions, including exact duplicates, low space, and file errors, may still request a decision during a manual import.",
         ),
         PageBreak(),
     ]
@@ -828,13 +880,14 @@ def build_story() -> list:
 
     story += chapter("12. Export captures for editing")
     story += [
-        p("<b>Library export</b> scans the master library without modifying it and builds capture sets from files with the same stem and corresponding organized path. Configured media partitions such as Photos, RAW, and Sidecars are normalized during matching, so one exposure can travel together even when its files live under separate media-root folders."),
+        p("Choose a library in <b>Libraries</b>, then <b>Export media</b>, or open <b>Library export</b> and select a saved library. This does not change the default import destination. Scanning reads metadata without changing source files. Matching stems and corresponding organized paths become capture sets; Photos, RAW, and Sidecars partitions are normalized during matching."),
     ]
     story += steps(
         [
-            ("Scan the master library", "Choose the configured library and scan it. Internal manifest and transfer-record folders are excluded."),
+            ("Scan the selected library", "Choose a saved library and select Scan library. Internal manifest and transfer-record folders are excluded. Changing libraries clears the old selection."),
+            ("Filter media and dates", "Choose All media, Photos, RAW, Videos, or Sidecars. Enable Capture date range for inclusive start/end dates; missing capture metadata falls back to file modification time. Include matching sidecars is optional. For example, select Videos and the required dates, then Select all matching."),
             ("Review detected sets", "Adjust the bracket/burst and interval thresholds, then review camera, capture time, rating, media types, and group labels."),
-            ("Select work", "Select one or more captures or expand a detected group. Optional group subfolders keep bracketed and interval sequences together."),
+            ("Select work", "Select one or more captures, Select all matching, or expand a detected group. Group expansion stays inside the active media/date filters. Optional group subfolders keep bracketed and interval sequences together."),
             ("Export", "Choose a separate editing folder and review the confirmation, including group folders, conflict suffix, and free-space reserve. Export is always copy-only, uses SHA-256 verification, reuses exact existing files, preserves different-content filename collisions with a suffix, and writes a JSON Lines record under .photocard-organizer/export-sessions."),
         ]
     )
@@ -850,12 +903,13 @@ def build_story() -> list:
     story += chapter("13. Tray, monitoring, and settings portability")
     story += [
         p("Closing the window hides the application when tray support is available. The tray menu can restore the window, scan now, pause or resume monitoring, and quit. Copy cards and enabled copy-only Digest Inboxes can be handled automatically; Move sources wait for an explicit manual confirmation."),
+        p("New settings check connections every 30 seconds. Unchanged card file scans gradually back off to the Maximum idle-card scan interval, initially 300 seconds, to reduce disk activity. Scan now forces discovery and scanning immediately. New mount changes trigger discovery without forcing unchanged connected cards to rescan. A card replaced at the same drive letter between checks, or changes on a still-mounted source, may wait until the next idle scan. Saved intervals are retained; Digest Inbox and hub intervals remain separate."),
         p("Portable client settings", "h2"),
         p("Export settings creates a JSON file containing organization, named-library definitions, safety, media, card-profile, backup, travel/hub, Digest Inbox, and history definitions. Machine-specific library, card, backup, travel, hub, digest, fallback, and local-log paths are removed. Named libraries, travel sources, hubs, and Digest Inboxes arrive without another computer's local path; importing over the same stable ID retains that client's existing path and enabled state."),
     ]
     story += steps(
         [
-            ("Export", "Use Export settings from the footer and store the JSON file securely."),
+            ("Export", "Open General options > Export settings and store the JSON file securely."),
             ("Install on the other computer", "Complete installation and choose local destination and log paths."),
             ("Import", "Use Import settings, review the merge confirmation, and then map retained card or backup roots as needed."),
         ]
@@ -925,7 +979,7 @@ def build_story() -> list:
         p("Use <b>--digest-inbox PROFILE_ID</b> more than once to run selected saved profiles, or <b>--digest-all</b> for every enabled profile. Move operations from the command line require the explicit <b>--confirm-move</b> flag. Without it, destructive work remains blocked."),
         p("Validate the release", "h2"),
         code("python -m unittest discover -s tests -v"),
-        p(f"Version {VERSION} includes 120 focused automated checks for named libraries, versioned metadata migration, organization, bracket confidence and I/O, folder recursion, retained profiles, verified moves, Digest Inbox repeat safety and background polling, local and portable records, replicas and transfer hubs, travel-source reconciliation, grouped editing exports, retries, large conflict paging/search/bulk review, portable settings, packaging/icon contracts, UI workflows, space refusal, source mutation, destination races, timestamps, and single-instance activation."),
+        p(f"Version {VERSION} includes automated checks for named libraries, versioned metadata migration, organization, bracket confidence and I/O, folder recursion, retained profiles, verified moves, Digest Inbox repeat safety and background polling, local and portable records, replicas and transfer hubs, travel-source reconciliation, grouped editing exports, retries, automatic conflict routing, large conflict paging/search/bulk review, portable settings, packaging/icon contracts, UI workflows, space refusal, source mutation, destination races, timestamps, and single-instance activation."),
         PageBreak(),
     ]
 
@@ -937,6 +991,10 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.10.0", "2026-09-08", "Integrity checks, resumable same-filesystem reorganization, lower-I/O verification, and expanded folder levels."],
+                ["0.9.0", "2026-09-07", "Content-based library merge, verified location migration, portable integrity baselines, and dialog lifecycle fixes."],
+                ["0.8.0", "2026-09-06", "In-place library reorganization, filtered named-library exports, and reduced scanning overhead."],
+                ["0.7.2", "2026-09-06", "Fixed Windows Qt packaging and added full installed-GUI verification."],
                 ["0.7.1", "2026-07-31", "Simplified Libraries and Import or merge workflows, clearer metadata actions, destination carry-over, and focused progressive disclosure."],
                 ["0.7.0", "2026-07-28", "Named libraries, schema-5 and library metadata migration, named import routes, Month and conditional long-exposure folders, saved-settings enforcement, and persistent progress."],
                 ["0.6.1", "2026-07-27", "Large/deep library analysis clarity, twelve editable levels, bounded-result transparency, and clearly named Windows maintenance."],

@@ -1,7 +1,41 @@
 # Changelog
 
+## 0.10.0 - 2026-09-08
+
+- Added a dedicated Integrity screen for full-library or selected-file checksum checks, missing-baseline creation, cancellation, immutable baseline results, and matching portable/local reports. Legacy catalogs migrate into `.photocard-organizer/integrity` while retaining the original catalog as a rollback copy.
+- Made detailed reorganization previews optional while retaining the final action summary and confirmation. Same-filesystem changes now use durable no-overwrite file and compatible whole-folder renames, with resumable catalog-update intents and preserved conflict routing.
+- Hash verified copies while streaming, compare the destination once, reuse verified snapshots, filter duplicate candidates by size, reuse persistent metadata, and coordinate bulk copy/checksum I/O to reduce unnecessary disk reads.
+- Added Day, numeric Month, Weekday, ISO week-year, capture hour, camera make/model, card ID, and extension organization choices, including an ISO-week tooltip.
+- Consolidated navigation into Workspace, Library tools, and Settings; added General options and an updated compact progress surface. Updated packaging checks, icons, shortcuts, and the versioned PDF manual.
+
+## 0.9.0 - 2026-09-07
+
+- Added Libraries > Merge library with SHA-256 content comparison across the receiving library and an incoming folder, saved organization rules, and organized conflict-review destinations. Source files are retained.
+- Added Libraries > Migrate library with full verified copying to an empty destination, metadata preservation, live index path relocation, and location commit after success. Original library files remain available for manual cleanup.
+- Added portable integrity baselines and matching local audit records for merge jobs; existing baseline mismatches stop processing without replacing the recorded hash.
+- Fixed new-dialog preview completion, worker cancellation, monitoring handoff, configured-default preservation, and copying an existing manifest during migration. Added regression tests for these workflows and destination/backup conflicts.
+- Updated the versioned PDF manual. This preview does not yet include the complete multi-source/clone wizard, automatic source cleanup, streaming verification optimization, or scheduled integrity checks; media-routing settings remain a backend capability rather than a general import UI.
+
+## 0.8.0 - 2026-09-06
+
+- Added Libraries > Reorganize library: choose media classes and a folder layout, inspect current/proposed paths, and explicitly confirm checksum-verified moves inside the same library. Original filenames are retained; collisions are preserved for Conflict review.
+- Optionally commit the selected folder rules for future imports when processing starts, and remove only previously scanned folders that become empty. Cancel does not save changes.
+- Preserve a fixed preview snapshot, refuse changed sources, reuse pending verified copies after failures, and update local catalog paths while retaining append-only transfer records.
+- Added Libraries > Export media with a named-library selector, media-type and inclusive capture-date filters, matching sidecars, and Select all matching. Group selection cannot bypass filters.
+- Replaced export and reorganization preview cell widgets with on-demand table models for large catalogs.
+- Reuse one database connection per scan, skip recorded files before metadata analysis, cache unchanged media/sidecar metadata, and scan for abandoned temporary files once per output directory per application session.
+- New configurations check connections every 30 seconds and back off unchanged-card file scans up to 300 seconds. Scan now bypasses the delay; saved intervals remain unchanged, and adding a drive does not force rescanning other unchanged cards.
+- Flush verified transfer data before completing copies, preserve per-write database commits, and retain required backup and logging checks before deleting originals.
+- Updated the versioned PDF guide. No configuration schema change is required; catalog indexes are added without removing existing records.
+
+## 0.7.2 - 2026-09-06
+
+- Fixed Windows packaging so unrelated build-machine DLLs cannot shadow Qt dependencies.
+- Added a disposable full-GUI installation check that opens every screen before an installer is produced.
+
 ## 0.7.1 - 2026-07-31
 
+- Routed every different-content filename collision into the local conflict-review folder without pausing an active import, while preserving both files and the organized hierarchy.
 - Renamed the primary destination screen to `Libraries` and separated its two main tasks into `Set up library` and `Import or merge`.
 - Clarified that connecting a library destination does not scan, import, or move media, while importing or merging always uses the reviewed copy or verified-move workflow.
 - Carried the selected or default destination into the import workflow and made unavailable selections fall back to an enabled library.

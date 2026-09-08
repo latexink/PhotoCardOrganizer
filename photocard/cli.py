@@ -24,6 +24,7 @@ from .single_instance import SingleInstance
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Monitor identified camera cards and organize their media.")
     parser.add_argument("--version", action="version", version=f"Photo Card Organizer {__version__}")
+    parser.add_argument("--check-gui", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, help="Path to the application configuration JSON file.")
     parser.add_argument("--service", action="store_true", help="Start in the tray with the settings window hidden.")
     parser.add_argument("--scan-once", action="store_true", help="Scan all connected identified cards once, then exit.")
@@ -109,6 +110,10 @@ def _print_results(results, errors) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.check_gui:
+        from .installation_check import check_gui
+
+        return check_gui(args.check_gui)
     instance = SingleInstance(default_config_path().parent / "instance.lock")
     if not instance.acquire():
         if instance.last_error is not None:

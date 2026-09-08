@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -13,6 +14,53 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from photocard.config import CURRENT_CONFIG_SCHEMA
+
+
+def isolated_environment(*, build: bool = False) -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in ("PYTHONPATH", "PYTHONHOME", "QT_PLUGIN_PATH", "QT_QPA_PLATFORM_PLUGIN_PATH", "QML2_IMPORT_PATH"):
+        environment.pop(name, None)
+    if os.name == "nt":
+        windows = Path(os.environ["SystemRoot"])
+        paths = [windows / "System32", windows]
+        if build:
+            paths.extend([Path(sys.executable).parent, Path(sys.base_prefix), Path(sys.base_prefix) / "DLLs"])
+        # Unrelated tools on PATH can supply incompatible DLLs with system names.
+        environment["PATH"] = os.pathsep.join(str(path) for path in paths)
+    return environment
+
+
+@contextmanager
+def build_environment():
+    previous = os.environ.copy()
+    environment = isolated_environment(build=True)
+    try:
+        os.environ.clear()
+        os.environ.update(environment)
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(previous)
+
+
+def check_bundle(executable: Path, work_directory: Path) -> None:
+    environment = isolated_environment()
+    environment["QT_QPA_PLATFORM"] = "offscreen"
+    work_directory.mkdir(parents=True, exist_ok=True)
+    report = work_directory / "gui-check.json"
+    report.unlink(missing_ok=True)
+    result = subprocess.run(
+        [str(executable), "--check-gui", str(report)],
+        cwd=executable.parent,
+        env=environment,
+        timeout=60,
+        check=False,
+    )
+    if result.returncode != 0 or not report.is_file():
+        detail = report.read_text(encoding="utf-8") if report.is_file() else "No startup report was produced."
+        raise RuntimeError(f"Packaged GUI check failed with code {result.returncode}: {detail}")
+    if json.loads(report.read_text(encoding="utf-8")).get("status") != "passed":
+        raise RuntimeError(f"Packaged GUI check did not pass: {report}")
 
 
 def project_version() -> str:
@@ -162,7 +210,8 @@ def build_bundle(
         # Desktop launchers use Terminal=false, so normal GUI launches stay quiet.
         arguments.extend(["--console", f"--icon={desktop_png_path}"])
 
-    PyInstaller.__main__.run(arguments)
+    with build_environment():
+        PyInstaller.__main__.run(arguments)
     bundle = dist_directory / "PhotoCardOrganizer"
     executable = bundle / ("PhotoCardOrganizer.exe" if os.name == "nt" else "PhotoCardOrganizer")
     if not executable.is_file():
@@ -193,17 +242,7 @@ def build_bundle(
     )
 
     if not skip_smoke:
-        environment = os.environ.copy()
-        environment.setdefault("QT_QPA_PLATFORM", "offscreen")
-        result = subprocess.run(
-            [str(executable), "--version"],
-            cwd=bundle,
-            env=environment,
-            timeout=30,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Packaged executable smoke test failed with code {result.returncode}.")
+        check_bundle(executable, work_directory)
     return bundle
 
 

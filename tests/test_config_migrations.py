@@ -92,6 +92,23 @@ class ConfigMigrationTests(unittest.TestCase):
     def test_normalization_always_emits_current_schema(self) -> None:
         self.assertEqual(CURRENT_CONFIG_SCHEMA, normalize_config({"schema": 1})["schema"])
 
+    def test_legacy_filename_conflict_choices_migrate_to_review_queue(self) -> None:
+        for legacy_policy in ("ask", "rename", "skip", "conflict_folder"):
+            with self.subTest(legacy_policy=legacy_policy):
+                normalized = normalize_config(
+                    {
+                        "safety": {
+                            "conflict_policy": legacy_policy,
+                            "manual_conflict_prompt": True,
+                        }
+                    }
+                )
+
+                self.assertEqual(
+                    "conflict_folder", normalized["safety"]["conflict_policy"]
+                )
+                self.assertFalse(normalized["safety"]["manual_conflict_prompt"])
+
     def test_schema_two_adds_empty_travel_and_hub_profiles(self) -> None:
         normalized = normalize_config({"schema": 2})
 

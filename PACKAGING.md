@@ -23,7 +23,7 @@ Build from PowerShell or File Explorer:
 .\build-windows-installer.bat
 ```
 
-The build installs `requirements-build.txt`, regenerates the versioned PDF user guide, runs the complete test suite, creates a one-folder PyInstaller bundle, smoke-tests its version command, and compiles:
+The build installs `requirements-build.txt`, regenerates the versioned PDF user guide, runs the complete test suite, creates a one-folder PyInstaller bundle, checks full GUI startup and navigation with a disposable library, and compiles:
 
 ```text
 artifacts/windows/PhotoCardOrganizer-Installer-VERSION.exe

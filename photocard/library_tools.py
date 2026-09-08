@@ -8,8 +8,8 @@ import statistics
 import threading
 import uuid
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass, field, replace
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from .atomic_copy import commit_without_overwrite, create_partial_file
@@ -141,7 +141,7 @@ def scan_library(
         if cancel_event is not None and cancel_event.is_set():
             raise InterruptedError("Library scan cancelled.")
         try:
-            metadata = extract_metadata(path, media_kind, use_exiftool=False)
+            metadata = extract_metadata(path, media_kind)
             relative_path = path.relative_to(library_root)
             items.append(
                 LibraryItem(
@@ -204,6 +204,34 @@ def build_capture_sets(items: Iterable[LibraryItem]) -> list[CaptureSet]:
             capture.primary.relative_path.as_posix().casefold(),
         ),
     )
+
+
+def filter_captures(
+    captures: Iterable[CaptureSet],
+    media_kind: str = "all",
+    start: date | None = None,
+    end: date | None = None,
+    include_sidecars: bool = True,
+) -> list[CaptureSet]:
+    if start and end and start > end:
+        raise ValueError("The start date must be on or before the end date.")
+    result = []
+    for capture in captures:
+        primary_items = tuple(
+            item for item in capture.items
+            if (media_kind == "all" or item.media_kind == media_kind)
+            and (include_sidecars or media_kind == "sidecar" or item.media_kind != "sidecar")
+            and (start is None or item.captured_at.date() >= start)
+            and (end is None or item.captured_at.date() <= end)
+        )
+        if not primary_items:
+            continue
+        items = primary_items
+        if include_sidecars and any(item.media_kind != "sidecar" for item in primary_items):
+            items += tuple(item for item in capture.items if item.media_kind == "sidecar" and item not in items)
+        primary = min(primary_items, key=_item_priority)
+        result.append(replace(capture, items=items, captured_at=primary.captured_at))
+    return result
 
 
 def _media_partition_markers(media_rules: dict) -> dict[str, str]:

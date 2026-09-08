@@ -10,6 +10,7 @@
 
 #define AppName "Photo Card Organizer"
 #define AppExe "PhotoCardOrganizer.exe"
+#define AppUserModelID "PhotoCardOrganizer.Desktop"
 #define AppMutexName "PhotoCardOrganizer.App.1"
 #define ProductRegistryKey "Software\PhotoCardOrganizer"
 
@@ -55,8 +56,8 @@ VersionInfoDescription=Photo Card Organizer Installer and Uninstaller
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "startmenu"; Description: "Create a Start Menu shortcut"; GroupDescription: "Shortcuts:"; Flags: checkedonce
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "startmenu"; Description: "Create a Start Menu shortcut"; GroupDescription: "Shortcuts:"
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"
 Name: "autostart"; Description: "Start monitoring when I sign in"; GroupDescription: "Background monitoring:"; Flags: unchecked
 
 [InstallDelete]
@@ -71,12 +72,12 @@ Type: files; Name: "{app}\PhotoCardOrganizer-*-User-Guide.pdf"
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{userprograms}\Photo Card Organizer\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: startmenu
+Name: "{userprograms}\Photo Card Organizer\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoCardOrganizer.ico"; AppUserModelID: "{#AppUserModelID}"; Tasks: startmenu
 Name: "{userprograms}\Photo Card Organizer\User Guide"; Filename: "{app}\PhotoCardOrganizer-{#AppVersion}-User-Guide.pdf"; WorkingDir: "{app}"; Tasks: startmenu
 Name: "{userprograms}\Photo Card Organizer\Changelog"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\CHANGELOG.md"""; WorkingDir: "{app}"; Tasks: startmenu
-Name: "{userprograms}\Photo Card Organizer\Uninstall Photo Card Organizer"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; Tasks: startmenu
-Name: "{userdesktop}\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Tasks: desktopicon
-Name: "{userstartup}\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; Parameters: "--service"; WorkingDir: "{app}"; Tasks: autostart
+Name: "{userprograms}\Photo Card Organizer\Uninstall Photo Card Organizer"; Filename: "{uninstallexe}"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoCardOrganizer.ico"; Tasks: startmenu
+Name: "{userdesktop}\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoCardOrganizer.ico"; AppUserModelID: "{#AppUserModelID}"; Tasks: desktopicon
+Name: "{userstartup}\Photo Card Organizer"; Filename: "{app}\{#AppExe}"; Parameters: "--service"; WorkingDir: "{app}"; IconFilename: "{app}\PhotoCardOrganizer.ico"; AppUserModelID: "{#AppUserModelID}"; Tasks: autostart
 
 [Registry]
 Root: HKCU; Subkey: "{#ProductRegistryKey}"; ValueType: string; ValueName: "InstallPath"; ValueData: "{app}"; Flags: uninsdeletekey

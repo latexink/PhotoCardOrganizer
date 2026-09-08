@@ -13,13 +13,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QEvent, QItemSelectionModel, QObject, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QDate, QEvent, QItemSelectionModel, QObject, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
+    QDateEdit,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -47,6 +48,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QTabWidget,
     QTableWidget,
+    QTableView,
     QTableWidgetItem,
     QToolButton,
     QVBoxLayout,
@@ -76,6 +78,7 @@ from .library_tools import (
     build_capture_sets,
     detect_capture_groups,
     export_captures,
+    filter_captures,
     scan_library,
 )
 from .library_state import (
@@ -86,6 +89,9 @@ from .library_state import (
 from .models import ActivityEvent, CardMarker, DecisionRequest, DecisionResult, ImportStats
 from .monitor import MonitorService
 from .organizer import MAX_DESTINATION_REDIRECTS, Organizer
+from .reorganization import ReorganizationOrganizer
+from .qt_library_tools import LazyTableModel, LibraryJobDialog, ReorganizationDialog
+from .qt_integrity import IntegrityPanel
 from .qt_common import (
     CAMERA_NAME_HELP,
     IMPORT_FOLDER_MODES,
@@ -151,11 +157,72 @@ PAGE_NAMES = (
     "Travel sync",
     "Library export",
     "Organization",
+    "Integrity",
     "Safety and location",
     "Conflict review",
     "Activity",
+    "General options",
     "Help & about",
 )
+
+NAVIGATION_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "WORKSPACE",
+        (
+            "Dashboard",
+            "Libraries",
+            "Cards and drives",
+            "Import or merge",
+            "Digest inboxes",
+        ),
+    ),
+    (
+        "LIBRARY TOOLS",
+        (
+            "Organization",
+            "Travel sync",
+            "Library export",
+            "Integrity",
+            "Conflict review",
+            "Activity",
+        ),
+    ),
+    ("SETTINGS", ("Safety and location", "General options", "Help & about")),
+)
+
+NAVIGATION_TOOLTIPS = {
+    "Integrity": "Verify saved checksums, create missing baselines, and review integrity reports.",
+    "General options": "Monitoring interval, portable settings, and application maintenance.",
+    "Dashboard": "Connected sources, capacity, and reviewed import actions.",
+    "Libraries": "Set up destinations, choose a default, import or merge files, and maintain library metadata.",
+    "Cards and drives": "Onboard cards and retain their identity and source settings.",
+    "Import or merge": "Add files from another folder to a managed library after reviewing the destination and source-file handling.",
+    "Digest inboxes": "Retain mixed incoming folders, digest new files incrementally, and review per-file state.",
+    "Travel sync": "Bring new laptop or travel-drive media into the desktop master with copy-only reconciliation.",
+    "Library export": "Select captures and detected bracket, burst, or interval groups for verified editing exports.",
+    "Organization": "Configure per-media destination folders, filenames, and session-record names.",
+    "Safety and location": "Configure verification, duplicates, low space, backups, logs, and place names.",
+    "Conflict review": "Compare preserved filename conflicts side by side and mark them reviewed.",
+    "Activity": "Review transfer, warning, and error events from this application session.",
+    "Help & about": "Open the included manual and view release, project, and credit information.",
+}
+
+NAVIGATION_ICONS = {
+    "Integrity": "info",
+    "General options": "settings",
+    "Dashboard": "info",
+    "Libraries": "settings",
+    "Cards and drives": "open",
+    "Import or merge": "add",
+    "Digest inboxes": "play",
+    "Travel sync": "refresh",
+    "Library export": "save",
+    "Organization": "settings",
+    "Safety and location": "warning",
+    "Conflict review": "warning",
+    "Activity": "info",
+    "Help & about": "info",
+}
 
 
 def set_dynamic_class(widget: QWidget, name: str) -> None:
@@ -361,15 +428,28 @@ class PhotoCardApp(QMainWindow):
         sidebar.setFixedWidth(215)
         sidebar.setStyleSheet(f"background: {COLORS['sidebar']};")
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(0, 18, 0, 12)
-        library_label = QLabel("LIBRARY")
-        library_label.setStyleSheet("font-size: 9pt; font-weight: 650; color: #9f9f9f; padding-left: 18px;")
-        sidebar_layout.addWidget(library_label)
+        sidebar_layout.setContentsMargins(0, 4, 0, 4)
         self.navigation = QListWidget()
         self.navigation.setObjectName("navigation")
         self.navigation.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        for name in PAGE_NAMES:
-            QListWidgetItem(name, self.navigation)
+        self.navigation_items: dict[str, QListWidgetItem] = {}
+        app = QApplication.instance()
+        for section_name, page_names in NAVIGATION_SECTIONS:
+            section = QListWidgetItem(section_name)
+            section.setData(Qt.ItemDataRole.UserRole, None)
+            section.setFlags(Qt.ItemFlag.NoItemFlags)
+            section.setSizeHint(QSize(0, 22))
+            section.setToolTip(f"{section_name.title()} navigation")
+            self.navigation.addItem(section)
+            for name in page_names:
+                item = QListWidgetItem(name)
+                if app is not None:
+                    item.setIcon(standard_icon(app, NAVIGATION_ICONS[name]))
+                item.setData(Qt.ItemDataRole.UserRole, name)
+                item.setSizeHint(QSize(0, 30))
+                item.setToolTip(NAVIGATION_TOOLTIPS[name])
+                self.navigation.addItem(item)
+                self.navigation_items[name] = item
         self.navigation.currentRowChanged.connect(self._navigation_changed)
         sidebar_layout.addWidget(self.navigation, 1)
         body_layout.addWidget(sidebar)
@@ -385,9 +465,11 @@ class PhotoCardApp(QMainWindow):
         self._build_travel_sync_page()
         self._build_library_export_page()
         self._build_organization_page()
+        self._build_integrity_page()
         self._build_safety_page()
         self._build_conflict_page()
         self._build_activity_page()
+        self._build_general_page()
         self._build_help_page()
         self._apply_tooltips()
         root_layout.addWidget(body, 1)
@@ -407,20 +489,96 @@ class PhotoCardApp(QMainWindow):
         caption.setMinimumWidth(72)
         layout.addWidget(caption)
         self.progress_label = QLabel("Ready")
-        self.progress_label.setMinimumWidth(220)
+        self.progress_label.setMinimumWidth(120)
+        self.progress_label.setMaximumWidth(420)
+        self.progress_label.setWordWrap(True)
         layout.addWidget(self.progress_label)
         self.transfer_progress = QProgressBar()
         self.transfer_progress.setObjectName("persistentProgress")
         self.transfer_progress.setRange(0, 1)
         self.transfer_progress.setValue(0)
         self.transfer_progress.setTextVisible(True)
-        self.transfer_progress.setMinimumWidth(360)
+        self.transfer_progress.setMinimumWidth(160)
         self.transfer_progress.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
         layout.addWidget(self.transfer_progress, 1)
         return progress_center
+
+    def _build_integrity_page(self) -> None:
+        _page, layout = self._new_page("Integrity", "Integrity")
+        self.integrity_panel = IntegrityPanel(self, lambda: self.config, self._begin_integrity,
+                                              lambda job: self.monitor.run_exclusive(job), self._finish_integrity)
+        for button, icon in ((self.integrity_panel.verify, "refresh"), (self.integrity_panel.create, "add"),
+                             (self.integrity_panel.choose, "open"), (self.integrity_panel.stop, "stop"),
+                             (self.integrity_panel.open_report, "open")):
+            self._add_icon(button, icon)
+        layout.addWidget(self.integrity_panel, 1)
+
+    def _begin_integrity(self):
+        if self._manual_import_running:
+            QMessageBox.information(self, "Operation in progress", "Finish the current operation first.")
+            return None
+        saved = self._saved_processing_config("checking library integrity")
+        if saved is None:
+            return None
+        self._integrity_was_paused = self.monitor.is_paused
+        self.monitor.set_paused(True)
+        self._manual_import_running = True
+        return saved
+
+    def _finish_integrity(self):
+        self._manual_import_running = False
+        if not self._integrity_was_paused:
+            self.monitor.set_paused(False)
+
+    def _open_integrity(self):
+        selected = self._selected_library_destination()
+        self.show_page("Integrity")
+        self.integrity_panel.refresh(selected["id"] if selected else None)
+
+    def _build_general_page(self) -> None:
+        _page, layout = self._new_page("General options", "General options")
+        content = QWidget()
+        form = QFormLayout(content)
+        form.setContentsMargins(0, 0, 12, 16)
+        form.setVerticalSpacing(18)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        self.poll_spin = self._number_spin(
+            self.config["monitor"]["poll_seconds"], 1, 3600, decimals=1, suffix=" sec"
+        )
+        form.addRow("Connected-card check interval", self.poll_spin)
+        self.idle_scan_spin = self._number_spin(
+            self.config["monitor"].get("idle_scan_max_seconds", 300), 30, 86400, decimals=0, suffix=" sec"
+        )
+        self.idle_scan_spin.setToolTip(
+            "Unchanged cards are scanned less often, up to this interval. Scan now checks immediately. "
+            "Higher values reduce disk activity but delay detecting new files on a still-connected source."
+        )
+        form.addRow("Maximum idle-card scan interval", self.idle_scan_spin)
+        self.import_settings_button = QPushButton("Import settings")
+        self._add_icon(self.import_settings_button, "open")
+        self.import_settings_button.setToolTip("Merge portable settings from another computer after confirmation, retaining this computer's local paths.")
+        self.import_settings_button.clicked.connect(self._import_client_settings)
+        self.export_settings_button = QPushButton("Export settings")
+        self._add_icon(self.export_settings_button, "save")
+        self.export_settings_button.setToolTip("Create a portable settings file with machine-specific paths removed.")
+        self.export_settings_button.clicked.connect(self._export_client_settings)
+        settings_row = QWidget()
+        settings_layout = QHBoxLayout(settings_row)
+        settings_layout.setContentsMargins(0, 0, 0, 0)
+        settings_layout.addWidget(self.import_settings_button)
+        settings_layout.addWidget(self.export_settings_button)
+        settings_layout.addStretch(1)
+        form.addRow("Settings transfer", settings_row)
+        self.maintenance_button = QPushButton("Installation and maintenance")
+        self._add_icon(self.maintenance_button, "settings")
+        self.maintenance_button.setToolTip("View the detected installation and open install, repair, update, or uninstall options.")
+        self.maintenance_button.clicked.connect(self._installation_maintenance)
+        form.addRow("Application", self.maintenance_button)
+        layout.addWidget(scrollable(content), 1)
 
     def _build_footer(self) -> QFrame:
         footer = QFrame()
@@ -434,24 +592,10 @@ class PhotoCardApp(QMainWindow):
         self.open_library_button.setToolTip("Open the primary destination library.")
         self.open_library_button.clicked.connect(self._open_library)
         layout.addWidget(self.open_library_button)
-        import_settings = QPushButton("Import settings")
-        import_settings.setIcon(standard_icon(app, "open"))
-        import_settings.setToolTip("Merge portable settings from another computer.")
-        import_settings.clicked.connect(self._import_client_settings)
-        layout.addWidget(import_settings)
-        export_settings = QPushButton("Export settings")
-        export_settings.setIcon(standard_icon(app, "save"))
-        export_settings.setToolTip("Create portable settings without machine-specific paths.")
-        export_settings.clicked.connect(self._export_client_settings)
-        layout.addWidget(export_settings)
-        installation = QPushButton("Install & uninstall")
-        installation.setIcon(standard_icon(app, "settings"))
-        installation.setToolTip(
-            "View the detected installation and open its separate installer or uninstaller."
-        )
-        installation.clicked.connect(self._installation_maintenance)
-        layout.addWidget(installation)
         layout.addStretch(1)
+        self.settings_state_label = QLabel("Settings saved")
+        set_dynamic_class(self.settings_state_label, "muted")
+        layout.addWidget(self.settings_state_label)
         self.save_button = QPushButton("Save settings")
         self.save_button.setIcon(standard_icon(app, "save"))
         self.save_button.clicked.connect(self.save_settings)
@@ -483,6 +627,9 @@ class PhotoCardApp(QMainWindow):
         if not hasattr(self, "save_button"):
             return
         self.save_button.setProperty("accent", self._settings_dirty)
+        self.settings_state_label.setText(
+            "Unsaved changes" if self._settings_dirty else "Settings saved"
+        )
         self.save_button.setToolTip(
             "Validate and save the changed settings."
             if self._settings_dirty
@@ -514,8 +661,8 @@ class PhotoCardApp(QMainWindow):
     def _new_page(self, name: str, title: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(28, 22, 28, 22)
-        layout.setSpacing(14)
+        layout.setContentsMargins(24, 16, 24, 16)
+        layout.setSpacing(12)
         heading = QLabel(title)
         heading.setObjectName("pageTitle")
         layout.addWidget(heading)
@@ -585,25 +732,11 @@ class PhotoCardApp(QMainWindow):
         self.organize_library_button.clicked.connect(
             self._open_import_merge
         )
-        self.travel_sync_button = QPushButton("Sync travel library")
-        self._add_icon(self.travel_sync_button, "refresh")
-        self.travel_sync_button.setToolTip(
-            "Bring new laptop or travel-drive media into this desktop master library."
-        )
-        self.travel_sync_button.clicked.connect(lambda: self.show_page("Travel sync"))
-        self.library_export_button = QPushButton("Export for editing")
-        self._add_icon(self.library_export_button, "save")
-        self.library_export_button.setToolTip(
-            "Select individual captures, multiple captures, or detected capture groups for a verified editing export."
-        )
-        self.library_export_button.clicked.connect(
-            lambda: self.show_page("Library export")
-        )
         scan = QPushButton("Scan now")
         self._add_icon(scan, "refresh")
         scan.clicked.connect(self._scan_now)
         scan.setToolTip("Check all enabled connected cards now.")
-        self.pause_button = QPushButton("Pause")
+        self.pause_button = QPushButton("Pause monitoring")
         self._add_icon(self.pause_button, "pause")
         self.pause_button.clicked.connect(self._toggle_pause)
         self.pause_button.setToolTip("Pause or resume automatic background scans.")
@@ -611,14 +744,10 @@ class PhotoCardApp(QMainWindow):
         self._add_icon(refresh, "refresh")
         refresh.clicked.connect(self.refresh_cards)
         refresh.setToolTip("Refresh connected-card and retained-profile status.")
-        actions.addWidget(self.import_button, 0, 0)
-        actions.addWidget(self.organize_library_button, 0, 1)
-        actions.addWidget(self.travel_sync_button, 0, 2)
-        actions.addWidget(self.library_export_button, 0, 3)
-        actions.addWidget(scan, 1, 0)
-        actions.addWidget(self.pause_button, 1, 1)
-        actions.addWidget(refresh, 1, 2)
-        actions.setColumnStretch(4, 1)
+        actions.addWidget(refresh, 0, 0)
+        actions.addWidget(scan, 0, 1)
+        actions.addWidget(self.pause_button, 0, 2)
+        actions.setColumnStretch(3, 1)
         self.dashboard_actions_layout = actions
         layout.addLayout(actions)
 
@@ -668,26 +797,24 @@ class PhotoCardApp(QMainWindow):
             0,
             3,
         )
-        import_options_layout.addWidget(
-            QLabel("Name"),
-            0,
-            4,
-        )
+        self.import_folder_name_label = QLabel("Event or project")
+        import_options_layout.addWidget(self.import_folder_name_label, 1, 0)
         import_options_layout.addWidget(
             self.import_folder_name_edit,
-            0,
-            5,
+            1,
+            1,
+            1,
+            3,
         )
         import_options_layout.addWidget(
             self.import_destination_preview,
-            1,
+            2,
             0,
             1,
-            6,
+            4,
         )
         import_options_layout.setColumnStretch(1, 2)
         import_options_layout.setColumnStretch(3, 1)
-        import_options_layout.setColumnStretch(5, 2)
         layout.addWidget(import_options)
         self.import_library_combo.currentIndexChanged.connect(
             self._update_import_destination_preview
@@ -705,6 +832,11 @@ class PhotoCardApp(QMainWindow):
         self.dashboard_table.itemSelectionChanged.connect(self._update_card_action_state)
         self.dashboard_table.cellDoubleClicked.connect(lambda _row, _column: self._import_selected())
         layout.addWidget(self.dashboard_table, 1)
+        import_actions = QHBoxLayout()
+        import_actions.addWidget(self.organize_library_button)
+        import_actions.addStretch(1)
+        import_actions.addWidget(self.import_button)
+        layout.addLayout(import_actions)
 
     def _build_library_management_page(self) -> None:
         _page, layout = self._new_page(
@@ -743,10 +875,38 @@ class PhotoCardApp(QMainWindow):
         self.import_or_merge_button.clicked.connect(
             self._open_import_merge
         )
+        self.merge_library_button = QPushButton("Merge library")
+        self._add_icon(self.merge_library_button, "next")
+        self.merge_library_button.setToolTip("Merge another managed library or folder into the selected library after a content-based preview.")
+        self.merge_library_button.clicked.connect(self._merge_selected_library)
         primary_actions.addWidget(self.add_library_button)
         primary_actions.addWidget(self.import_or_merge_button)
+        primary_actions.addWidget(self.merge_library_button)
+        self.library_export_button = QPushButton("Export media")
+        self._add_icon(self.library_export_button, "save")
+        self.library_export_button.setToolTip("Select media and capture dates from this library for a verified copy export.")
+        self.library_export_button.clicked.connect(self._open_library_export)
+        primary_actions.addWidget(self.library_export_button)
+        self.reorganize_selected_library_button = QPushButton("Reorganize library")
+        self._add_icon(self.reorganize_selected_library_button, "refresh")
+        self.reorganize_selected_library_button.setToolTip("Preview and change folders inside this library, keeping filenames and verifying moves.")
+        self.reorganize_selected_library_button.clicked.connect(self._reorganize_selected_library)
+        self.migrate_selected_library_button = QPushButton("Migrate library")
+        self._add_icon(self.migrate_selected_library_button, "refresh")
+        self.migrate_selected_library_button.setToolTip("Copy a library to a new location, verify it, and leave the original available for explicit cleanup.")
+        self.migrate_selected_library_button.clicked.connect(self._migrate_selected_library)
         primary_actions.addStretch(1)
         layout.addLayout(primary_actions)
+        library_tools = QHBoxLayout()
+        library_tools.addWidget(self.reorganize_selected_library_button)
+        library_tools.addWidget(self.migrate_selected_library_button)
+        self.integrity_library_button = QPushButton("Verify integrity")
+        self._add_icon(self.integrity_library_button, "info")
+        self.integrity_library_button.setToolTip("Check files against saved checksums in the Integrity section.")
+        self.integrity_library_button.clicked.connect(self._open_integrity)
+        library_tools.addWidget(self.integrity_library_button)
+        library_tools.addStretch(1)
+        layout.addLayout(library_tools)
 
         self.library_table = QTableWidget(0, 6)
         self.library_table.setHorizontalHeaderLabels(
@@ -844,14 +1004,6 @@ class PhotoCardApp(QMainWindow):
         actions.addWidget(self.remove_library_button)
         layout.addLayout(actions)
 
-        note = QLabel(
-            "Library metadata, manifests, and local session records are kept "
-            "inside each library's .photocard-organizer folder. Credentials "
-            "and remote-login secrets are never stored there."
-        )
-        note.setWordWrap(True)
-        set_dynamic_class(note, "muted")
-        layout.addWidget(note)
         self._refresh_library_destinations()
 
     def _build_cards_page(self) -> None:
@@ -915,15 +1067,15 @@ class PhotoCardApp(QMainWindow):
         workflow_layout = QVBoxLayout(workflow_header)
         workflow_layout.setContentsMargins(0, 0, 0, 0)
         workflow_layout.setSpacing(7)
-        step_row = QHBoxLayout()
+        step_row = QVBoxLayout()
         self.existing_step_label = QLabel("Step 1 of 3: Source")
         self.existing_step_label.setObjectName("dialogTitle")
         self.existing_step_detail = QLabel(
             "Choose the folder whose files you want to add"
         )
         set_dynamic_class(self.existing_step_detail, "muted")
+        self.existing_step_detail.setWordWrap(True)
         step_row.addWidget(self.existing_step_label)
-        step_row.addStretch(1)
         step_row.addWidget(self.existing_step_detail)
         workflow_layout.addLayout(step_row)
         self.existing_step_progress = QProgressBar()
@@ -1547,8 +1699,13 @@ class PhotoCardApp(QMainWindow):
         self.export_library_label = QLabel(self.config["destination_root"])
         self.export_library_label.setWordWrap(True)
         self.export_library_label.setToolTip(
-            "The current desktop master library. Save settings before scanning after changing it."
+            "The selected library folder. Changing libraries clears the scanned selection."
         )
+        self.export_library_combo = QComboBox()
+        self.export_library_combo.setToolTip("Choose a saved library without changing the default import destination.")
+        self._export_scanned_root = None
+        self.filtered_export_captures = []
+        self.export_library_combo.currentIndexChanged.connect(self._export_library_changed)
         self.bracket_seconds_spin = self._number_spin(
             3.0, 0.1, 60.0, decimals=1, suffix=" sec"
         )
@@ -1567,12 +1724,40 @@ class PhotoCardApp(QMainWindow):
         self.interval_seconds_spin.valueChanged.connect(
             self._rebuild_export_groups
         )
-        controls_layout.addWidget(QLabel("Master library"), 0, 0)
-        controls_layout.addWidget(self.export_library_label, 0, 1, 1, 3)
+        controls_layout.addWidget(QLabel("Library"), 0, 0)
+        controls_layout.addWidget(self.export_library_combo, 0, 1, 1, 3)
         controls_layout.addWidget(QLabel("Bracket / burst gap"), 1, 0)
         controls_layout.addWidget(self.bracket_seconds_spin, 1, 1)
         controls_layout.addWidget(QLabel("Interval maximum gap"), 1, 2)
         controls_layout.addWidget(self.interval_seconds_spin, 1, 3)
+        self.export_media_combo = choice_combo((("All media", "all"), *[(label, kind) for kind, label in MEDIA_LABELS.items()]), "all")
+        self.export_media_combo.setToolTip("Limit exports to this media type. Group selection cannot add other types.")
+        self.export_sidecars_check = QCheckBox("Include matching sidecars")
+        self.export_sidecars_check.setChecked(True)
+        self.export_sidecars_check.setToolTip("Include sidecars paired with matching photos, RAW files or videos.")
+        controls_layout.addWidget(QLabel("Media"), 2, 0)
+        controls_layout.addWidget(self.export_media_combo, 2, 1)
+        controls_layout.addWidget(self.export_sidecars_check, 2, 2, 1, 2)
+        self.export_date_check = QCheckBox("Capture date range")
+        self.export_date_check.setToolTip("Include both boundary dates. Files without capture metadata use their modification date.")
+        self.export_start_date = QDateEdit(QDate.currentDate().addYears(-1))
+        self.export_end_date = QDateEdit(QDate.currentDate())
+        for field, tip in ((self.export_start_date, "First capture date, inclusive."), (self.export_end_date, "Last capture date, inclusive.")):
+            field.setCalendarPopup(True)
+            field.setDisplayFormat("yyyy-MM-dd")
+            field.setToolTip(tip)
+            field.setEnabled(False)
+            field.dateChanged.connect(self._refresh_export_table)
+        controls_layout.addWidget(self.export_date_check, 3, 0)
+        controls_layout.addWidget(self.export_start_date, 3, 1)
+        controls_layout.addWidget(QLabel("Through"), 3, 2)
+        controls_layout.addWidget(self.export_end_date, 3, 3)
+        controls_layout.addWidget(self.export_library_label, 4, 0, 1, 4)
+        self.export_date_check.toggled.connect(self.export_start_date.setEnabled)
+        self.export_date_check.toggled.connect(self.export_end_date.setEnabled)
+        self.export_date_check.toggled.connect(self._refresh_export_table)
+        self.export_media_combo.currentIndexChanged.connect(self._refresh_export_table)
+        self.export_sidecars_check.toggled.connect(self._refresh_export_table)
         controls_layout.setColumnStretch(1, 1)
         controls_layout.setColumnStretch(3, 1)
         layout.addWidget(controls)
@@ -1582,7 +1767,7 @@ class PhotoCardApp(QMainWindow):
             "Scan the master library to select captures for editing."
         )
         set_dynamic_class(self.export_status_label, "muted")
-        self.scan_export_library_button = QPushButton("Scan master library")
+        self.scan_export_library_button = QPushButton("Scan library")
         self._add_icon(self.scan_export_library_button, "refresh")
         self.scan_export_library_button.setToolTip(
             "Read supported media metadata in the master library. No files are modified."
@@ -1592,10 +1777,12 @@ class PhotoCardApp(QMainWindow):
         status_row.addWidget(self.scan_export_library_button)
         layout.addLayout(status_row)
 
-        self.export_table = QTableWidget(0, 6)
-        self.export_table.setHorizontalHeaderLabels(
-            ("CAPTURED", "GROUP", "MEDIA", "RATING", "CAMERA", "FILE")
+        self.export_table = QTableView()
+        self.export_model = LazyTableModel(
+            ("CAPTURED", "GROUP", "MEDIA", "RATING", "CAMERA", "FILE"),
+            values=self._export_row_values, parent=self,
         )
+        self.export_table.setModel(self.export_model)
         self.export_table.setSelectionBehavior(
             QTableWidget.SelectionBehavior.SelectRows
         )
@@ -1606,13 +1793,13 @@ class PhotoCardApp(QMainWindow):
         self.export_table.setAlternatingRowColors(True)
         self.export_table.verticalHeader().setVisible(False)
         export_header = self.export_table.horizontalHeader()
-        for column, width in enumerate((150, 145, 130, 64, 155)):
+        for column, width in enumerate((142, 124, 105, 58, 115)):
             export_header.setSectionResizeMode(
                 column, QHeaderView.ResizeMode.Fixed
             )
             self.export_table.setColumnWidth(column, width)
         export_header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
-        self.export_table.itemSelectionChanged.connect(
+        self.export_table.selectionModel().selectionChanged.connect(
             self._update_export_action_state
         )
         layout.addWidget(self.export_table, 1)
@@ -1652,16 +1839,27 @@ class PhotoCardApp(QMainWindow):
         export_options.addWidget(self.export_full_groups_check, 0, 0)
         export_options.addWidget(self.export_group_folders_check, 0, 1)
         export_options.addWidget(self.select_export_group_button, 1, 0)
+        self.export_select_all_button = QPushButton("Select all matching")
+        self._add_icon(self.export_select_all_button, "add")
+        self.export_select_all_button.setToolTip("Select every capture matching the current media and date filters.")
+        self.export_select_all_button.clicked.connect(self.export_table.selectAll)
+        export_options.addWidget(self.export_select_all_button, 1, 1)
         export_options.addWidget(self.export_selected_button, 1, 2)
         export_options.setColumnStretch(2, 1)
         self.export_options_layout = export_options
         layout.addLayout(export_options)
+        self._refresh_import_library_choices()
+        self._export_library_changed()
 
     def _segment_combo(self, current: str = "") -> QComboBox:
         combo = QComboBox()
         combo.setEditable(True)
         for label, value in SEGMENT_LABELS.items():
             combo.addItem(label, value)
+            if label == "Year and week (ISO)":
+                combo.setItemData(combo.count() - 1,
+                    "Monday-start weeks. Week 1 contains January 4; dates near New Year can belong to the previous or next week-year.",
+                    Qt.ItemDataRole.ToolTipRole)
         combo.setToolTip(
             "Choose metadata, a retained source-folder level, or enter a fixed folder "
             "name. None omits only this destination level."
@@ -2010,9 +2208,6 @@ class PhotoCardApp(QMainWindow):
             safety["move_checksum_algorithm"],
         )
         self.move_checksum_combo.currentIndexChanged.connect(self._update_history_preview)
-        self.poll_spin = self._number_spin(
-            self.config["monitor"]["poll_seconds"], 1, 3600, decimals=1, suffix=" sec"
-        )
         self.shared_history_check = QCheckBox("Share transfer history across computers")
         self.shared_history_check.setChecked(bool(identification.get("shared_history", True)))
         self.require_portable_log_check = QCheckBox(
@@ -2040,7 +2235,6 @@ class PhotoCardApp(QMainWindow):
         transfer_form.addRow("Default source-file handling", self.default_action_combo)
         transfer_form.addRow("Copy verification method", self.copy_verification_combo)
         transfer_form.addRow("Move verification algorithm", self.move_checksum_combo)
-        transfer_form.addRow("Connected-card check interval", self.poll_spin)
         transfer_form.addRow("", self.shared_history_check)
         transfer_form.addRow("", self.require_portable_log_check)
         transfer_form.addRow("", self.local_history_enabled_check)
@@ -2052,17 +2246,8 @@ class PhotoCardApp(QMainWindow):
         policies_form = QFormLayout(policies)
         policies_form.setContentsMargins(18, 18, 18, 18)
         policies_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self.conflict_policy_combo = choice_combo(
-            [
-                ("Ask", "ask"),
-                ("Append filename", "rename"),
-                ("Conflict folder", "conflict_folder"),
-                ("Skip", "skip"),
-            ],
-            safety.get("conflict_policy", "rename"),
-        )
-        self.manual_conflict_check = QCheckBox("Ask during manual imports")
-        self.manual_conflict_check.setChecked(bool(safety.get("manual_conflict_prompt", True)))
+        self.conflict_policy_label = QLabel("Keep both files in Conflict review")
+        self.conflict_policy_label.setWordWrap(True)
         self.exact_duplicate_combo = choice_combo(
             [
                 ("Append filename", "rename"),
@@ -2124,8 +2309,7 @@ class PhotoCardApp(QMainWindow):
         self.retry_delay_spin = self._number_spin(
             safety.get("io_retry_delay_seconds", 1), 0, 30, suffix=" sec"
         )
-        policies_form.addRow("Same filename, different content", self.conflict_policy_combo)
-        policies_form.addRow("", self.manual_conflict_check)
+        policies_form.addRow("Same name, different content", self.conflict_policy_label)
         policies_form.addRow("Exact-content duplicate", self.exact_duplicate_combo)
         policies_form.addRow("", self.manual_duplicate_check)
         policies_form.addRow("Conflict filename suffix", self.conflict_appendage_edit)
@@ -2285,14 +2469,17 @@ class PhotoCardApp(QMainWindow):
         for side, title in (("existing", "Existing file"), ("incoming", "Incoming file")):
             panel = QGroupBox(title)
             panel_layout = QVBoxLayout(panel)
+            panel_layout.setContentsMargins(10, 6, 10, 8)
+            panel_layout.setSpacing(6)
             preview = AspectPreviewLabel("None selected")
-            preview.setMinimumSize(210, 70)
+            preview.setMinimumSize(180, 48)
             preview.setMaximumHeight(180)
             preview.setStyleSheet(
                 f"background: {COLORS['surface_alt']}; border: 1px solid {COLORS['border']}; border-radius: 4px;"
             )
             details = QLabel()
             details.setWordWrap(True)
+            details.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
             path = QLabel("None selected")
             path.setWordWrap(True)
             set_dynamic_class(path, "muted")
@@ -2515,12 +2702,8 @@ class PhotoCardApp(QMainWindow):
                 "For moves, require the local session record before deleting the source file.",
             ),
             (
-                self.conflict_policy_combo,
-                "Applied when an organized destination filename already exists but contains different bytes.",
-            ),
-            (
-                self.manual_conflict_check,
-                "Pause a manual import so you can choose how to handle each different-content filename conflict.",
+                self.conflict_policy_label,
+                "Preserves the existing file and routes the incoming file into the local conflict-review folder without pausing the import.",
             ),
             (
                 self.exact_duplicate_combo,
@@ -2601,40 +2784,35 @@ class PhotoCardApp(QMainWindow):
             controls["filename"].setToolTip(
                 "Template for the organized filename. {original} preserves the source name; {stem} and {ext} can be combined with metadata tokens."
             )
-        for index, item_name in enumerate(PAGE_NAMES):
-            item = self.navigation.item(index)
-            if item is not None:
-                item.setToolTip(
-                    {
-                        "Dashboard": "Connected sources, capacity, and reviewed import actions.",
-                        "Libraries": "Set up destinations, choose a default, import or merge files, and maintain library metadata.",
-                        "Cards and drives": "Onboard cards and retain their identity and source settings.",
-                        "Import or merge": "Add files from another folder to a managed library after reviewing the destination and source-file handling.",
-                        "Digest inboxes": "Retain mixed incoming folders, digest new files incrementally, and review per-file state.",
-                        "Travel sync": "Bring new laptop or travel-drive media into the desktop master with copy-only reconciliation.",
-                        "Library export": "Select captures and detected bracket, burst, or interval groups for verified editing exports.",
-                        "Organization": "Configure per-media destination folders, filenames, and session-record names.",
-                        "Safety and location": "Configure verification, duplicates, low space, backups, logs, and place names.",
-                        "Conflict review": "Compare preserved filename conflicts side by side and mark them reviewed.",
-                        "Activity": "Review transfer, warning, and error events from this application session.",
-                        "Help & about": "Open the included manual and view release, project, and credit information.",
-                    }[item_name]
-                )
+        for item_name, item in self.navigation_items.items():
+            item.setToolTip(NAVIGATION_TOOLTIPS[item_name])
 
     def _navigation_changed(self, row: int) -> None:
-        if 0 <= row < self.stack.count():
-            self.stack.setCurrentIndex(row)
-            if row == self.page_indexes.get("Digest inboxes"):
-                self._refresh_digest_inboxes()
+        item = self.navigation.item(row)
+        if item is None:
+            return
+        page_name = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(page_name, str):
+            return
+        page_index = self.page_indexes.get(page_name)
+        if page_index is None:
+            return
+        self.stack.setCurrentIndex(page_index)
+        if page_name == "Digest inboxes":
+            self._refresh_digest_inboxes()
 
     def show_page(self, name: str) -> None:
         index = self.page_indexes.get(name)
         if index is None:
             return
         self.stack.setCurrentIndex(index)
-        self.navigation.setCurrentRow(index)
+        item = self.navigation_items.get(name)
+        if item is not None:
+            self.navigation.setCurrentItem(item)
         if hasattr(self, "edit_card_button"):
             self._update_card_action_state()
+        if name == "Integrity" and hasattr(self, "integrity_panel"):
+            self.integrity_panel.refresh()
 
     def _open_import_merge(self) -> None:
         selected = self._import_merge_target()
@@ -2679,10 +2857,128 @@ class PhotoCardApp(QMainWindow):
                 return library
         return None
 
+    def _open_library_export(self) -> None:
+        selected = self._selected_library_destination()
+        self.show_page("Library export")
+        if selected:
+            set_combo_data(self.export_library_combo, str(selected["id"]))
+
+    def _reorganize_selected_library(self) -> None:
+        selected = self._selected_library_destination()
+        if self._manual_import_running or not selected:
+            return
+        saved = self._saved_processing_config("reorganizing a library")
+        if saved is None:
+            return
+        candidate = copy.deepcopy(saved)
+        select_library_destination(candidate, str(selected["id"]))
+        was_paused = self.monitor.is_paused
+        self.monitor.set_paused(True)
+        try:
+            # Finish any current scan before taking the preview snapshot.
+            ready = threading.Event()
+            threading.Thread(target=lambda: self.monitor.run_exclusive(ready.set), daemon=True).start()
+            while not ready.wait(0.04):
+                QApplication.processEvents()
+            dialog = ReorganizationDialog(self, candidate)
+            if dialog.exec() != QDialog.DialogCode.Accepted or dialog.plan is None:
+                return
+            plan = dialog.plan
+            algorithm = str(plan.config["safety"]["move_checksum_algorithm"]).upper()
+            if not is_yes(QMessageBox.warning(
+                self, "Confirm library reorganization",
+                f"Library: {selected['name']}\nFolder: {candidate['destination_root']}\n"
+                f"Proposed moves: {plan.changes}\nLayout: {dialog.preset.currentText()}\n"
+                f"Save layout for future imports: {'Yes' if dialog.save_layout.isChecked() else 'No'}\n"
+                f"Remove empty folders: {'Yes' if dialog.cleanup.isChecked() else 'No'}\n\n"
+                "Same-filesystem moves rename files without rereading their contents. "
+                f"Cross-filesystem copies receive one {algorithm} comparison before source removal. "
+                f"Create missing checksum baselines: {'Yes' if dialog.baselines.isChecked() else 'No'}. "
+                "Required backups and records remain enabled; conflicts are preserved for review.\n\nStart?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )):
+                return
+            if dialog.save_layout.isChecked():
+                saved["organization"]["checksum_new_baselines"] = dialog.baselines.isChecked()
+                for kind, check in dialog.media.items():
+                    if check.isChecked():
+                        saved["media_rules"][kind]["folder_segments"] = list(plan.config["media_rules"][kind]["folder_segments"])
+                save_config(saved, self.config_path)
+                self.config = saved
+                self._load_config_into_controls()
+                self.monitor.update_config(saved)
+                self._set_settings_dirty(False)
+            self._start_card_batch(
+                [plan.card], config_override=plan.config, confirmation_complete=True,
+                move_confirmation_complete=True, reorganization_plan=plan,
+                remove_empty_folders=dialog.cleanup.isChecked(), resume_monitor_after=not was_paused,
+            )
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Could not reorganize library", str(exc))
+        finally:
+            if not self._manual_import_running and not was_paused:
+                self.monitor.set_paused(False)
+
+    def _open_library_job(self, mode: str, source: Path, *, target: Path | None = None) -> None:
+        selected = self._selected_library_destination()
+        if self._manual_import_running or not selected:
+            return
+        saved = self._saved_processing_config("starting a library operation")
+        if saved is None:
+            return
+        candidate = copy.deepcopy(saved)
+        select_library_destination(candidate, str(selected["id"]))
+        dialog = LibraryJobDialog(self, candidate, [source], mode=mode, migration_target=target)
+        was_paused = self.monitor.is_paused
+        self.monitor.set_paused(True)
+        try:
+            ready = threading.Event()
+            threading.Thread(target=lambda: self.monitor.run_exclusive(ready.set), daemon=True).start()
+            while not ready.wait(0.04):
+                QApplication.processEvents()
+            self._manual_import_running = True
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                if mode == "migrate" and target is not None:
+                    updated = copy.deepcopy(saved)
+                    for library in updated["library_destinations"]:
+                        if str(library.get("id")) == str(selected["id"]):
+                            library["root"] = str(target.expanduser())
+                    save_config(updated, self.config_path)
+                    self.config = normalize_config(updated)
+                    self._load_config_into_controls()
+                    self.monitor.update_config(self.config)
+                    self._set_settings_dirty(False)
+                self.events.put(ActivityEvent("success", f"{mode.title()} operation completed"))
+                self._refresh_library_destinations()
+        except (OSError, ValueError) as exc:
+            QMessageBox.critical(self, "Library operation needs attention", str(exc))
+        finally:
+            self._manual_import_running = False
+            if not was_paused:
+                self.monitor.set_paused(False)
+
+    def _merge_selected_library(self) -> None:
+        selected = self._selected_library_destination()
+        if not selected:
+            return
+        source_text = QFileDialog.getExistingDirectory(self, "Choose library or folder to merge")
+        if source_text:
+            self._open_library_job("merge", Path(source_text))
+
+    def _migrate_selected_library(self) -> None:
+        selected = self._selected_library_destination()
+        if not selected or not selected.get("root"):
+            return
+        target_text = QFileDialog.getExistingDirectory(self, "Choose empty migration destination")
+        if target_text and Path(target_text).resolve() != Path(selected["root"]).expanduser().resolve():
+            self._open_library_job("migrate", Path(selected["root"]), target=Path(target_text))
+
     def _refresh_import_library_choices(self) -> None:
         for attribute in (
             "import_library_combo",
             "existing_library_combo",
+            "export_library_combo",
         ):
             combo = getattr(self, attribute, None)
             if combo is None:
@@ -2785,6 +3081,8 @@ class PhotoCardApp(QMainWindow):
         mode = combo_value(self.import_folder_mode_combo)
         named = mode != "standard"
         self.import_folder_name_edit.setEnabled(named)
+        self.import_folder_name_edit.setVisible(named)
+        self.import_folder_name_label.setVisible(named)
         selected = self._selected_import_library()
         if selected is None:
             self.import_destination_preview.setText(
@@ -4608,6 +4906,7 @@ class PhotoCardApp(QMainWindow):
         if candidate is None:
             return
         try:
+            select_library_destination(candidate, str(self.export_library_combo.currentData() or ""))
             library_root = Path(candidate["destination_root"]).expanduser().resolve()
             if not library_root.is_dir():
                 raise ValueError("The desktop master library does not exist.")
@@ -4683,6 +4982,7 @@ class PhotoCardApp(QMainWindow):
             )
             return
         self.library_captures = build_capture_sets(items)
+        self._export_scanned_root = library_root
         self._rebuild_export_groups()
         self.export_library_label.setText(str(library_root))
         self._refresh_export_table()
@@ -4698,47 +4998,57 @@ class PhotoCardApp(QMainWindow):
         if self.library_captures:
             self._refresh_export_table()
 
-    def _refresh_export_table(self) -> None:
+    def _export_library_changed(self) -> None:
+        if not hasattr(self, "export_model"):
+            return
+        selected = library_destination(self.config, str(self.export_library_combo.currentData() or ""))
+        root = Path(selected["root"]).expanduser().resolve() if selected else None
+        self.export_library_label.setText(str(root) if root else "No library selected")
+        if self._export_scanned_root != root:
+            self.library_captures = []
+            self.library_groups = []
+            self._export_scanned_root = None
+            self._refresh_export_table()
+
+    def _export_row_values(self, capture):
+        group = self._export_group_by_capture.get(capture.capture_id)
+        group_text = "Single"
+        if group is not None:
+            label = "Bracket / burst" if group.kind == "bracket" else "Interval"
+            group_text = f"{label} ({len(group.capture_ids)})"
+        return (
+            capture.captured_at.strftime("%Y-%m-%d %H:%M:%S"), group_text,
+            capture.media_label, str(capture.rating) if capture.rating is not None else "-",
+            capture.camera or "Unknown", capture.primary.relative_path.as_posix(),
+        )
+
+    def _refresh_export_table(self, *_args) -> None:
         if not hasattr(self, "export_table"):
             return
         selected_ids = set(self._selected_export_capture_ids())
-        group_by_capture = {
+        self._export_group_by_capture = {
             capture_id: group
             for group in self.library_groups
             for capture_id in group.capture_ids
         }
-        self.export_table.setRowCount(len(self.library_captures))
-        selected_rows = []
-        for row, capture in enumerate(self.library_captures):
-            group = group_by_capture.get(capture.capture_id)
-            group_text = ""
-            if group is not None:
-                label = (
-                    "Bracket / burst"
-                    if group.kind == "bracket"
-                    else "Interval"
-                )
-                group_text = f"{label} ({len(group.capture_ids)})"
-            values = (
-                capture.captured_at.strftime("%Y-%m-%d %H:%M:%S"),
-                group_text or "Single",
-                capture.media_label,
-                str(capture.rating) if capture.rating is not None else "-",
-                capture.camera or "Unknown",
-                capture.primary.relative_path.as_posix(),
+        error = ""
+        try:
+            self.filtered_export_captures = filter_captures(
+                self.library_captures, media_kind=str(self.export_media_combo.currentData()),
+                start=self.export_start_date.date().toPython() if self.export_date_check.isChecked() else None,
+                end=self.export_end_date.date().toPython() if self.export_date_check.isChecked() else None,
+                include_sidecars=self.export_sidecars_check.isChecked(),
             )
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                item.setToolTip(value)
-                if column == 0:
-                    item.setData(
-                        Qt.ItemDataRole.UserRole, capture.capture_id
-                    )
-                self.export_table.setItem(row, column, item)
+        except ValueError as exc:
+            self.filtered_export_captures = []
+            error = str(exc)
+        self.export_model.replace_rows(self.filtered_export_captures)
+        for row, capture in enumerate(self.filtered_export_captures):
             if capture.capture_id in selected_ids:
-                selected_rows.append(row)
-        for row in selected_rows:
-            self.export_table.selectRow(row)
+                self.export_table.selectionModel().select(
+                    self.export_model.index(row, 0),
+                    QItemSelectionModel.SelectionFlag.Select | QItemSelectionModel.SelectionFlag.Rows,
+                )
         bracket_count = sum(
             1 for group in self.library_groups if group.kind == "bracket"
         )
@@ -4746,10 +5056,10 @@ class PhotoCardApp(QMainWindow):
             1 for group in self.library_groups if group.kind == "interval"
         )
         file_count = sum(
-            len(capture.items) for capture in self.library_captures
+            len(capture.items) for capture in self.filtered_export_captures
         )
         self.export_status_label.setText(
-            f"{len(self.library_captures)} captures / {file_count} files | "
+            error or f"{len(self.filtered_export_captures)} matching captures / {file_count} files | "
             f"{bracket_count} bracket or burst groups | "
             f"{interval_count} interval groups"
         )
@@ -4763,14 +5073,10 @@ class PhotoCardApp(QMainWindow):
             return []
         result = []
         for index in selection.selectedRows(0):
-            item = self.export_table.item(index.row(), 0)
-            if item is not None:
-                result.append(
-                    str(item.data(Qt.ItemDataRole.UserRole) or "")
-                )
+            result.append(str(index.data(Qt.ItemDataRole.UserRole) or ""))
         return result
 
-    def _update_export_action_state(self) -> None:
+    def _update_export_action_state(self, *_args) -> None:
         if hasattr(self, "export_selected_button"):
             self.export_selected_button.setEnabled(
                 bool(self._selected_export_capture_ids())
@@ -4788,8 +5094,8 @@ class PhotoCardApp(QMainWindow):
         if selection is None:
             return
         selection.clearSelection()
-        for row in range(self.export_table.rowCount()):
-            item = self.export_table.item(row, 0)
+        for row in range(self.export_model.rowCount()):
+            item = self.export_model.index(row, 0)
             if (
                 item is not None
                 and item.data(Qt.ItemDataRole.UserRole) in selected_ids
@@ -4816,7 +5122,7 @@ class PhotoCardApp(QMainWindow):
                     selected_ids.update(group.capture_ids)
         captures = [
             capture
-            for capture in self.library_captures
+            for capture in self.filtered_export_captures
             if capture.capture_id in selected_ids
         ]
         selected_groups = [
@@ -4830,7 +5136,9 @@ class PhotoCardApp(QMainWindow):
         if not destination_text:
             return
         destination = Path(destination_text).expanduser().resolve()
-        library_root = Path(self.config["destination_root"]).expanduser().resolve()
+        library_root = self._export_scanned_root
+        if library_root is None:
+            return
         if paths_overlap(destination, library_root):
             QMessageBox.critical(
                 self,
@@ -5335,11 +5643,11 @@ class PhotoCardApp(QMainWindow):
         safety["copy_verification"] = combo_value(self.copy_verification_combo)
         safety["move_checksum_algorithm"] = combo_value(self.move_checksum_combo)
         safety["replica_verification"] = combo_value(self.replica_verification_combo)
-        safety["conflict_policy"] = combo_value(self.conflict_policy_combo)
+        safety["conflict_policy"] = "conflict_folder"
         safety["exact_duplicate_policy"] = combo_value(self.exact_duplicate_combo)
         safety["conflict_filename_appendage"] = self.conflict_appendage_edit.text()
         safety["conflict_folder"] = self.conflict_folder_edit.text().strip()
-        safety["manual_conflict_prompt"] = self.manual_conflict_check.isChecked()
+        safety["manual_conflict_prompt"] = False
         safety["manual_duplicate_prompt"] = self.manual_duplicate_check.isChecked()
         safety["space_policy"] = combo_value(self.space_policy_combo)
         safety["manual_space_prompt"] = self.manual_space_check.isChecked()
@@ -5354,6 +5662,7 @@ class PhotoCardApp(QMainWindow):
         safety["io_retry_count"] = self.retry_count_spin.value()
         safety["io_retry_delay_seconds"] = self.retry_delay_spin.value()
         candidate["monitor"]["poll_seconds"] = self.poll_spin.value()
+        candidate["monitor"]["idle_scan_max_seconds"] = self.idle_scan_spin.value()
         candidate["location"]["online_place_names"] = self.location_enabled_check.isChecked()
         candidate["location"]["user_agent"] = self.location_user_agent_edit.text().strip()
         candidate["travel_libraries"] = copy.deepcopy(self.travel_libraries)
@@ -5470,11 +5779,9 @@ class PhotoCardApp(QMainWindow):
         set_combo_data(self.copy_verification_combo, safety["copy_verification"])
         set_combo_data(self.move_checksum_combo, safety["move_checksum_algorithm"])
         set_combo_data(self.replica_verification_combo, safety.get("replica_verification", "sha256"))
-        set_combo_data(self.conflict_policy_combo, safety["conflict_policy"])
         set_combo_data(self.exact_duplicate_combo, safety.get("exact_duplicate_policy", "rename"))
         self.conflict_appendage_edit.setText(str(safety.get("conflict_filename_appendage", "_{number}")))
         self.conflict_folder_edit.setText(str(safety.get("conflict_folder", "Conflicts")))
-        self.manual_conflict_check.setChecked(bool(safety.get("manual_conflict_prompt", True)))
         self.manual_duplicate_check.setChecked(bool(safety.get("manual_duplicate_prompt", False)))
         set_combo_data(self.space_policy_combo, safety.get("space_policy", "fallback_then_block"))
         self.manual_space_check.setChecked(bool(safety.get("manual_space_prompt", True)))
@@ -5487,6 +5794,7 @@ class PhotoCardApp(QMainWindow):
         self.retry_count_spin.setValue(int(safety.get("io_retry_count", 2)))
         self.retry_delay_spin.setValue(float(safety.get("io_retry_delay_seconds", 1.0)))
         self.poll_spin.setValue(float(self.config["monitor"]["poll_seconds"]))
+        self.idle_scan_spin.setValue(float(self.config["monitor"].get("idle_scan_max_seconds", 300)))
         self.location_enabled_check.setChecked(bool(self.config["location"]["online_place_names"]))
         self.location_user_agent_edit.setText(str(self.config["location"]["user_agent"]))
         brackets = self.config["organization"][
@@ -5547,7 +5855,7 @@ class PhotoCardApp(QMainWindow):
         self._reset_existing_structure()
         self._update_history_preview()
         self._update_existing_preview()
-        self.export_library_label.setText(self.config["destination_root"])
+        self._export_library_changed()
         self._loading_controls = False
         self._set_settings_dirty(False)
 
@@ -5757,6 +6065,8 @@ class PhotoCardApp(QMainWindow):
         self.import_or_merge_button.setEnabled(
             import_target is not None
         )
+        self.library_export_button.setEnabled(online and not self._manual_import_running)
+        self.reorganize_selected_library_button.setEnabled(online and not self._manual_import_running)
         if import_target is not None:
             self.import_or_merge_button.setToolTip(
                 "Add files from another folder or library to "
@@ -5883,7 +6193,7 @@ class PhotoCardApp(QMainWindow):
         if hasattr(self, "safety_destination_edit"):
             self.safety_destination_edit.setText(root)
         if hasattr(self, "export_library_label"):
-            self.export_library_label.setText(root)
+            self._export_library_changed()
 
     def _open_selected_library(self) -> None:
         selected = self._selected_library_destination()
@@ -6491,7 +6801,7 @@ class PhotoCardApp(QMainWindow):
 
     def _toggle_pause(self) -> None:
         paused = self.monitor.toggle_paused()
-        self.pause_button.setText("Resume" if paused else "Pause")
+        self.pause_button.setText("Resume monitoring" if paused else "Pause monitoring")
         self.status_label.setText("Background monitoring paused" if paused else "Background monitoring active")
         if hasattr(self, "tray_pause_action"):
             self.tray_pause_action.setText("Resume monitoring" if paused else "Pause monitoring")
@@ -6650,6 +6960,9 @@ class PhotoCardApp(QMainWindow):
         confirmation_complete: bool = False,
         hub_receipts: dict[str, dict] | None = None,
         config_override: dict | None = None,
+        reorganization_plan=None,
+        remove_empty_folders: bool = False,
+        move_confirmation_complete: bool = False,
     ) -> bool:
         if self._manual_import_running or not cards:
             return False
@@ -6677,6 +6990,9 @@ class PhotoCardApp(QMainWindow):
         )
         for card in cards:
             for label, output_root in output_roots:
+                if (reorganization_plan is not None and card == reorganization_plan.card
+                        and label == "primary destination" and card.root.resolve() == output_root.resolve()):
+                    continue
                 if paths_overlap(card.root, output_root):
                     QMessageBox.critical(
                         self,
@@ -6697,7 +7013,7 @@ class PhotoCardApp(QMainWindow):
             return False
 
         move_cards = [card for card in cards if card.action == "move"]
-        if move_cards:
+        if move_cards and not move_confirmation_complete:
             algorithm = str(base_config["safety"].get("move_checksum_algorithm", "sha256")).upper()
             replicas = self._required_replica_names(base_config)
             names = ", ".join(card.name for card in move_cards)
@@ -6717,6 +7033,7 @@ class PhotoCardApp(QMainWindow):
                 return False
 
         self._manual_import_running = True
+        self._update_library_action_state()
         self._update_card_action_state()
         self._update_digest_action_state()
         self.organize_library_button.setEnabled(False)
@@ -6770,10 +7087,10 @@ class PhotoCardApp(QMainWindow):
 
                         try:
                             for _redirect in range(MAX_DESTINATION_REDIRECTS):
-                                organizer = Organizer(
-                                    current_config,
-                                    event_callback=send,
-                                    decision_callback=self._request_decision,
+                                organizer = (
+                                    ReorganizationOrganizer(reorganization_plan, event_callback=send)
+                                    if reorganization_plan is not None else
+                                    Organizer(current_config, event_callback=send, decision_callback=self._request_decision)
                                 )
                                 receipt_entries = (
                                     source_entries(organizer, card)
@@ -6786,6 +7103,10 @@ class PhotoCardApp(QMainWindow):
                                     allow_destructive=card.action == "move",
                                 )
                                 aggregate.merge(result)
+                                if reorganization_plan is not None:
+                                    if remove_empty_folders and not (result.failed or result.blocked or result.stopped_early):
+                                        organizer.remove_empty_folders()
+                                    break
                                 if not result.requested_destination_root:
                                     receipt_hub = (
                                         hub_receipts.get(card.card_id)
@@ -6901,6 +7222,7 @@ class PhotoCardApp(QMainWindow):
 
     def _import_finished(self) -> None:
         self._manual_import_running = False
+        self._update_library_action_state()
         self.organize_library_button.setEnabled(True)
         self._update_existing_review_state()
         self._update_digest_action_state()
@@ -7071,6 +7393,8 @@ class PhotoCardApp(QMainWindow):
         if self._shutdown_complete:
             return
         self._shutdown_complete = True
+        if hasattr(self, "integrity_panel"):
+            self.integrity_panel.shutdown()
         if hasattr(self, "event_timer"):
             self.event_timer.stop()
         if self.instance_guard is not None:

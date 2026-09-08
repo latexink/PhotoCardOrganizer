@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import copy
 import logging
 import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -256,6 +258,20 @@ def extract_metadata(
     *,
     use_exiftool: bool = True,
 ) -> MediaMetadata:
+    path = path.resolve()
+    signature = []
+    for candidate in (path, path.with_suffix(".xmp"), path.with_suffix(".XMP")):
+        try:
+            stat = candidate.stat()
+            signature.append((stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino))
+        except FileNotFoundError:
+            signature.append(None)
+    executable = shutil.which("exiftool") if use_exiftool else None
+    return copy.deepcopy(_cached_metadata(path, media_kind, bool(executable), tuple(signature)))
+
+
+@lru_cache(maxsize=8192)
+def _cached_metadata(path: Path, media_kind: str, use_exiftool: bool, signature: tuple) -> MediaMetadata:
     fallback_date = datetime.fromtimestamp(path.stat().st_mtime)
     merged: dict[str, Any] = {}
     readers = [_read_exiftool] if use_exiftool else []
@@ -275,8 +291,11 @@ def extract_metadata(
     rating = _rating(merged.get("rating"))
     if rating is None:
         rating = _rating(merged.get("rating_percent"), percent=True)
+    captured_at = parse_datetime(merged.get("date")) or fallback_date
+    if captured_at.tzinfo is not None:
+        captured_at = captured_at.astimezone().replace(tzinfo=None)
     return MediaMetadata(
-        captured_at=parse_datetime(merged.get("date")) or fallback_date,
+        captured_at=captured_at,
         media_kind=media_kind,
         make=str(merged.get("make", "")).strip(),
         model=str(merged.get("model", "")).strip(),

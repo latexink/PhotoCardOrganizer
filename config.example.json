@@ -95,7 +95,8 @@
     }
   ],
   "monitor": {
-    "poll_seconds": 5,
+    "poll_seconds": 30,
+    "idle_scan_max_seconds": 300,
     "settle_seconds": 3,
     "start_minimized": false
   },
@@ -103,6 +104,7 @@
     "backup_before_migration": true
   },
   "organization": {
+    "checksum_new_baselines": false,
     "long_exposure_brackets": {
       "enabled": false,
       "folder_name": "Long Exposure Brackets",
@@ -120,11 +122,11 @@
     "minimum_destination_free_percent": 10.0,
     "minimum_destination_free_gb": 5.0,
     "warn_source_free_percent": 10.0,
-    "conflict_policy": "rename",
+    "conflict_policy": "conflict_folder",
     "exact_duplicate_policy": "rename",
     "conflict_filename_appendage": "_{number}",
     "conflict_folder": "Conflicts",
-    "manual_conflict_prompt": true,
+    "manual_conflict_prompt": false,
     "manual_duplicate_prompt": false,
     "space_policy": "fallback_then_block",
     "manual_space_prompt": true,
@@ -137,7 +139,7 @@
   "location": {
     "online_place_names": false,
     "provider": "nominatim",
-    "user_agent": "PhotoCardOrganizer/0.7",
+    "user_agent": "PhotoCardOrganizer/0.10",
     "request_timeout_seconds": 8,
     "coordinate_precision": 4
   },

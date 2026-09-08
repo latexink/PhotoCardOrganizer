@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import json
+import threading
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -12,6 +15,7 @@ class ImportManifest:
     def __init__(self, destination_root: Path | str, create: bool = True):
         self.state_dir = state_directory(destination_root)
         self.path = self.state_dir / "manifest.sqlite3"
+        self._session = threading.local()
         if create:
             self.state_dir.mkdir(parents=True, exist_ok=True)
             self._initialize()
@@ -23,18 +27,117 @@ class ImportManifest:
 
     @contextmanager
     def _connection(self):
-        connection = self._connect()
+        shared = getattr(self._session, "connection", None)
+        connection = shared or self._connect()
         try:
             with connection:
                 yield connection
         finally:
+            if shared is None:
+                connection.close()
+
+    @contextmanager
+    def processing_session(self):
+        """Reuse one thread-local connection, committing each write independently."""
+        if getattr(self._session, "connection", None) is not None or not self.path.exists():
+            yield
+            return
+        connection = self._connect()
+        self._session.connection = connection
+        try:
+            yield
+        finally:
+            self._session.connection = None
             connection.close()
+
+    def completed_keys(self, card_id: str) -> set[str]:
+        if not self.path.exists():
+            return set()
+        with self._connection() as connection:
+            rows = connection.execute(
+                "SELECT source_key FROM imports WHERE card_id = ? AND source_key NOT IN (SELECT source_key FROM pending_imports)", (card_id,)
+            ).fetchall()
+        return {str(row[0]) for row in rows}
+
+    def relocate_destinations(self, source: Path, destination: Path) -> None:
+        with self._connection() as connection:
+            for table, column in (
+                ("imports", "destination_path"),
+                ("digest_items", "destination_path"),
+                ("conflicts", "existing_path"),
+                ("conflicts", "incoming_path"),
+            ):
+                connection.execute(
+                    f"UPDATE {table} SET {column} = ? WHERE {column} = ?",
+                    (str(destination), str(source)),
+                )
+
+    def rename_intents(self) -> list[dict]:
+        with self._connection() as connection:
+            return [json.loads(row[0]) for row in connection.execute("SELECT payload FROM rename_intents")]
+
+    @staticmethod
+    def metadata_signature(source):
+        signature = []
+        for path in dict.fromkeys((source, source.with_suffix(".xmp"), source.with_suffix(".XMP"))):
+            try:
+                value = path.stat()
+                signature.append([value.st_size, value.st_mtime_ns, value.st_ctime_ns, value.st_ino, value.st_dev])
+            except FileNotFoundError:
+                signature.append(None)
+        return signature
+
+    def cached_metadata(self, source, media_kind):
+        if not self.path.exists():
+            return None
+        try:
+            with self._connection() as connection:
+                row = connection.execute("SELECT signature,payload FROM metadata_cache WHERE path=?", (str(source),)).fetchone()
+            if row is None or json.loads(row[0]) != self.metadata_signature(source):
+                return None
+            from .models import MediaMetadata
+            payload = json.loads(row[1])
+            if payload["media_kind"] != media_kind:
+                return None
+            payload["captured_at"] = datetime.fromisoformat(payload["captured_at"])
+            payload["capture_group"] = ""
+            payload["location_name"] = ""
+            return MediaMetadata(**payload)
+        except (sqlite3.Error, ValueError, TypeError, KeyError):
+            return None
+
+    def cache_metadata(self, source, metadata):
+        payload = asdict(metadata)
+        payload["captured_at"] = metadata.captured_at.isoformat()
+        # These values depend on current grouping/geocoding settings, not the file alone.
+        payload["capture_group"] = ""
+        payload["location_name"] = ""
+        with self._connection() as connection:
+            connection.execute("INSERT OR REPLACE INTO metadata_cache VALUES (?, ?, ?)",
+                (str(source), json.dumps(self.metadata_signature(source)), json.dumps(payload)))
+
+    def record_rename_intent(self, payload: dict) -> None:
+        with self._connection() as connection:
+            connection.execute("INSERT OR REPLACE INTO rename_intents VALUES (?, ?)", (payload["source"], json.dumps(payload)))
+
+    def clear_rename_intent(self, source: Path) -> None:
+        with self._connection() as connection:
+            connection.execute("DELETE FROM rename_intents WHERE source_path=?", (str(source),))
 
     def _initialize(self) -> None:
         with self._connection() as connection:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(
                 """
+                CREATE TABLE IF NOT EXISTS metadata_cache (
+                    path TEXT PRIMARY KEY,
+                    signature TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS rename_intents (
+                    source_path TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS imports (
                     source_key TEXT PRIMARY KEY,
                     card_id TEXT NOT NULL,
@@ -47,6 +150,7 @@ class ImportManifest:
                     imported_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS imports_card_id_idx ON imports(card_id);
+                CREATE INDEX IF NOT EXISTS imports_destination_idx ON imports(destination_path);
                 CREATE TABLE IF NOT EXISTS pending_imports (
                     source_key TEXT PRIMARY KEY,
                     card_id TEXT NOT NULL,
@@ -77,6 +181,9 @@ class ImportManifest:
                     reviewed_at TEXT NOT NULL DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS conflicts_status_idx ON conflicts(status, created_at);
+                CREATE INDEX IF NOT EXISTS conflicts_existing_idx ON conflicts(existing_path);
+                CREATE INDEX IF NOT EXISTS conflicts_incoming_idx ON conflicts(incoming_path);
+                CREATE INDEX IF NOT EXISTS conflicts_source_idx ON conflicts(source_key, incoming_path);
                 CREATE TABLE IF NOT EXISTS hub_receipts (
                     hub_id TEXT NOT NULL,
                     producer_channel TEXT NOT NULL,
@@ -102,6 +209,7 @@ class ImportManifest:
                 );
                 CREATE INDEX IF NOT EXISTS digest_items_status_idx
                     ON digest_items(profile_id, status, updated_at);
+                CREATE INDEX IF NOT EXISTS digest_items_destination_idx ON digest_items(destination_path);
                 CREATE TABLE IF NOT EXISTS digest_runs (
                     run_id TEXT PRIMARY KEY,
                     profile_id TEXT NOT NULL,

@@ -6,6 +6,7 @@ import platform
 import sys
 import tempfile
 import uuid
+import threading
 from pathlib import Path
 
 
@@ -29,6 +30,8 @@ _OWNER_ID = hashlib.sha256(_owner_material().encode("utf-8")).hexdigest()[:16]
 _PROCESS_RUN_ID = uuid.uuid4().hex[:16]
 _PARTIAL_PREFIX = f".pco-{_OWNER_ID}-"
 _CURRENT_PREFIX = f"{_PARTIAL_PREFIX}{_PROCESS_RUN_ID}-"
+_CLEANED_DIRECTORIES: set[Path] = set()
+_CLEANUP_LOCK = threading.Lock()
 
 
 def cleanup_abandoned_partials(directory: Path) -> None:
@@ -42,7 +45,11 @@ def cleanup_abandoned_partials(directory: Path) -> None:
 
 
 def create_partial_file(directory: Path) -> Path:
-    cleanup_abandoned_partials(directory)
+    key = directory.resolve()
+    with _CLEANUP_LOCK:
+        if key not in _CLEANED_DIRECTORIES:
+            cleanup_abandoned_partials(directory)
+            _CLEANED_DIRECTORIES.add(key)
     descriptor, name = tempfile.mkstemp(
         prefix=_CURRENT_PREFIX,
         suffix=".partial",
@@ -103,6 +110,35 @@ def commit_without_overwrite(temporary: Path, destination: Path) -> None:
 
 def partial_owner_id() -> str:
     return _OWNER_ID
+
+
+def same_filesystem(source: Path, destination: Path) -> bool:
+    ancestor = destination.parent
+    while not ancestor.exists():
+        if ancestor.parent == ancestor:
+            raise FileNotFoundError(f"Destination volume is unavailable: {destination}")
+        ancestor = ancestor.parent
+    device = source.stat().st_dev
+    return bool(device) and device == ancestor.stat().st_dev
+
+
+def relocate_without_overwrite(source: Path, destination: Path) -> None:
+    """Reuse the no-replace primitive, including its hard-link fallback."""
+    if not same_filesystem(source, destination):
+        import errno
+        raise OSError(errno.EXDEV, "A cross-filesystem relocation requires copying")
+    commit_without_overwrite(source, destination)
+    if source.exists():
+        if not os.path.samefile(source, destination):
+            raise OSError("Source identity changed during relocation")
+        source.unlink()
+    if os.name != "nt":
+        for directory in {source.parent, destination.parent}:
+            descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
 
 
 def current_partial_prefix() -> str:

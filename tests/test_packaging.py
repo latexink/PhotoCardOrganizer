@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PIL import Image
 
@@ -19,6 +20,74 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class PackagingContractTests(unittest.TestCase):
+    def test_gui_check_uses_disposable_state_without_loading_user_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            settings = base / "config.json"
+            settings.write_text("not valid configuration", encoding="utf-8")
+            environment = os.environ.copy()
+            environment.update({
+                "APPDATA": temporary,
+                "XDG_CONFIG_HOME": temporary,
+                "QT_QPA_PLATFORM": "offscreen",
+            })
+            report = base / "gui-check.json"
+            result = subprocess.run(
+                [sys.executable, "app.py", "--config", str(settings), "--check-gui", str(report)],
+                cwd=PROJECT_ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr + (report.read_text() if report.exists() else ""))
+            summary = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual("passed", summary["status"])
+            self.assertEqual(14, len(summary["pages"]))
+            self.assertTrue(report.with_suffix(".png").is_file())
+            self.assertEqual("not valid configuration", settings.read_text())
+            self.assertEqual([], [path for path in base.iterdir() if path.is_dir()])
+
+    def test_build_environment_is_isolated_and_restored(self) -> None:
+        module = runpy.run_path(str(PROJECT_ROOT / "packaging" / "build_bundle.py"))
+        with patch.dict(os.environ, {
+            "PATH": "unrelated-native-tools",
+            "PYTHONPATH": "unrelated-python",
+            "QT_PLUGIN_PATH": "unrelated-qt",
+        }):
+            original = os.environ.copy()
+            with self.assertRaisesRegex(RuntimeError, "build failed"):
+                with module["build_environment"]():
+                    self.assertNotIn("PYTHONPATH", os.environ)
+                    self.assertNotIn("QT_PLUGIN_PATH", os.environ)
+                    if os.name == "nt":
+                        self.assertNotIn("unrelated-native-tools", os.environ["PATH"])
+                        self.assertIn(str(Path(sys.executable).parent), os.environ["PATH"])
+                    raise RuntimeError("build failed")
+            self.assertEqual(original, dict(os.environ))
+
+    def test_bundle_check_rejects_missing_or_failed_gui_report(self) -> None:
+        module = runpy.run_path(str(PROJECT_ROOT / "packaging" / "build_bundle.py"))
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            executable = base / "PhotoCardOrganizer.exe"
+            report = base / "gui-check.json"
+            report.write_text('{"status": "passed"}')
+            with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
+                with self.assertRaisesRegex(RuntimeError, "No startup report"):
+                    module["check_bundle"](executable, base)
+                self.assertEqual("--check-gui", run.call_args.args[0][1])
+                self.assertFalse(report.exists())
+
+            def failed_check(*args, **kwargs):
+                report.write_text('{"status": "failed"}')
+                return subprocess.CompletedProcess([], 0)
+
+            with patch("subprocess.run", side_effect=failed_check):
+                with self.assertRaisesRegex(RuntimeError, "did not pass"):
+                    module["check_bundle"](executable, base)
+
     def test_project_and_runtime_versions_match(self) -> None:
         import tomllib
 
@@ -61,6 +130,22 @@ class PackagingContractTests(unittest.TestCase):
         self.assertIn("PrivilegesRequired=lowest", script)
         self.assertIn("AppMutex=", script)
         self.assertIn("UsePreviousTasks=yes", script)
+        self.assertIn('Type: filesandordirs; Name: "{app}\\_internal"', script)
+        from photocard.qt_theme import WINDOWS_APP_USER_MODEL_ID
+
+        self.assertIn(f'#define AppUserModelID "{WINDOWS_APP_USER_MODEL_ID}"', script)
+        for task in ("desktopicon", "startmenu"):
+            task_line = next(line for line in script.splitlines() if line.startswith(f'Name: "{task}";'))
+            self.assertNotIn("unchecked", task_line)
+            self.assertNotIn("checkedonce", task_line)
+        launch_shortcuts = [
+            line for line in script.splitlines()
+            if line.startswith("Name: ") and 'Filename: "{app}\\{#AppExe}"' in line
+        ]
+        self.assertEqual(3, len(launch_shortcuts))
+        for shortcut in launch_shortcuts:
+            self.assertIn('IconFilename: "{app}\\PhotoCardOrganizer.ico"', shortcut)
+            self.assertIn('AppUserModelID: "{#AppUserModelID}"', shortcut)
         self.assertIn("Start monitoring when I sign in", script)
         self.assertIn(
             "OutputBaseFilename=PhotoCardOrganizer-Installer-{#AppVersion}",

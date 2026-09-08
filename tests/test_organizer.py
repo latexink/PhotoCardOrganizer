@@ -356,11 +356,12 @@ class OrganizerIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(1, len(local_sessions))
 
-    def test_manual_conflict_choice_can_keep_both(self) -> None:
+    def test_filename_conflict_routes_to_review_without_pausing(self) -> None:
         card = self.base / "CONFLICT_CARD"
         destination = self.base / "conflict-library"
         config = self.config(card, destination)
         config["safety"]["conflict_policy"] = "ask"
+        config["safety"]["manual_conflict_prompt"] = True
         self.identify(card, config)
         source = card / "DCIM" / "IMG_0300.JPG"
         self.jpeg(source)
@@ -372,13 +373,19 @@ class OrganizerIntegrationTests(unittest.TestCase):
 
         def decide(request):
             requests.append(request)
-            return DecisionResult("rename", apply_to_session=True)
+            return DecisionResult("stop")
 
         result, _ = Organizer(config, decision_callback=decide).scan_all()
         self.assertEqual(1, result[0].imported)
-        self.assertEqual("filename_conflict", requests[0].kind)
+        self.assertEqual([], requests)
         self.assertTrue(requested.exists())
-        self.assertTrue(requested.with_name("IMG_0300_2.JPG").exists())
+        relative = requested.relative_to(destination)
+        conflict_copy = destination / "Conflicts" / relative
+        self.assertTrue(conflict_copy.exists())
+        conflicts = ImportManifest(destination).conflicts("open")
+        self.assertEqual(1, len(conflicts))
+        self.assertEqual("filename_conflict", conflicts[0]["conflict_type"])
+        self.assertEqual("conflict_folder", conflicts[0]["resolution"])
 
     def test_configured_space_fallback_redirects_the_card(self) -> None:
         card = self.base / "SPACE_CARD"
@@ -550,11 +557,13 @@ class OrganizerIntegrationTests(unittest.TestCase):
         with patch("photocard.organizer.shutil.copy2", side_effect=copy_with_external_race):
             results, _ = Organizer(config).scan_all()
 
-        imported_files = sorted(destination.rglob("IMG_0660*.JPG"))
+        imported_files = list(destination.rglob("IMG_0660*.JPG"))
+        organized_file = next(path for path in imported_files if "Conflicts" not in path.parts)
+        conflict_file = next(path for path in imported_files if "Conflicts" in path.parts)
         self.assertEqual(1, results[0].imported)
         self.assertEqual(2, len(imported_files))
-        self.assertEqual(b"external process content", imported_files[0].read_bytes())
-        self.assertNotEqual(imported_files[0].read_bytes(), imported_files[1].read_bytes())
+        self.assertEqual(b"external process content", organized_file.read_bytes())
+        self.assertNotEqual(organized_file.read_bytes(), conflict_file.read_bytes())
 
     def test_future_source_timestamp_does_not_skip_forever(self) -> None:
         card = self.base / "FUTURE_CARD"

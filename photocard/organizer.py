@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
 import time
 import uuid
 from collections.abc import Callable, Iterator
@@ -16,6 +17,7 @@ from .atomic_copy import commit_without_overwrite, create_partial_file
 from .brackets import assign_long_exposure_groups, capture_key
 from .discovery import capacity_for, discover_cards
 from .geocode import ReverseGeocoder
+from .io_schedule import serialized_io
 from .manifest import ImportManifest
 from .metadata import extract_metadata
 from .models import (
@@ -223,6 +225,7 @@ class Organizer:
         return first == second or first in second.parents or second in first.parents
 
     @staticmethod
+    @serialized_io
     def _hash_file(path: Path, algorithm: str = "sha256") -> str:
         digest = hashlib.new(algorithm)
         with path.open("rb") as handle:
@@ -235,9 +238,9 @@ class Organizer:
         cls, source: Path, destination: Path, algorithm: str = "sha256"
     ) -> tuple[bool, str]:
         try:
-            source_hash = cls._hash_file(source, algorithm)
             if source.stat().st_size != destination.stat().st_size:
-                return False, source_hash
+                return False, ""
+            source_hash = cls._hash_file(source, algorithm)
             return source_hash == cls._hash_file(destination, algorithm), source_hash
         except OSError:
             return False, ""
@@ -266,16 +269,23 @@ class Organizer:
         source: Path,
         requested: Path,
         checksum_algorithm: str,
+        *, compare_content: bool = True,
     ) -> tuple[Path | None, str, dict[str, object] | None]:
         if not requested.exists():
             return requested, "", None
-        matches, content_hash = self._same_content(source, requested, checksum_algorithm)
+        matches, content_hash = self._same_content(source, requested, checksum_algorithm) if compare_content else (False, "")
         safety = self.config["safety"]
         conflict_type = "exact_duplicate" if matches else "filename_conflict"
-        policy_key = "exact_duplicate_policy" if matches else "conflict_policy"
-        prompt_key = "manual_duplicate_prompt" if matches else "manual_conflict_prompt"
-        policy = safety.get(policy_key, "rename")
-        interactive = bool(self.decision_callback and safety.get(prompt_key, not matches))
+        if matches:
+            policy = safety.get("exact_duplicate_policy", "rename")
+            interactive = bool(
+                self.decision_callback and safety.get("manual_duplicate_prompt", False)
+            )
+        else:
+            # Preserve both versions and keep the batch moving. Filename conflicts
+            # are reviewed after transfer instead of stopping an active import.
+            policy = "conflict_folder"
+            interactive = False
         if interactive or policy == "ask":
             result = self._decide(
                 DecisionRequest(
@@ -421,6 +431,7 @@ class Organizer:
             and (expected_inode != current_inode or expected_device != current_device)
         )
 
+    @serialized_io
     def _copy_and_verify(
         self,
         source: Path,
@@ -441,23 +452,49 @@ class Organizer:
 
         try:
             verify_snapshot()
-            shutil.copy2(source, temporary)
+            content_hash = self._copy_payload(source, temporary, verification)
             verify_snapshot()
             if snapshot.st_size != temporary.stat().st_size:
                 raise OSError("Copied size does not match the source.")
             if verification != "size":
-                content_hash = self._hash_file(source, verification)
-                verify_snapshot()
                 if content_hash != self._hash_file(temporary, verification):
                     raise OSError(f"{verification.upper()} verification failed.")
             verify_snapshot()
+            mode = temporary.stat().st_mode
+            if not mode & stat.S_IWRITE:
+                temporary.chmod(mode | stat.S_IWRITE)
+            try:
+                with temporary.open("rb+") as handle:
+                    os.fsync(handle.fileno())
+            finally:
+                if not mode & stat.S_IWRITE:
+                    temporary.chmod(mode)
             commit_without_overwrite(temporary, destination)
+            if os.name != "nt":
+                descriptor = os.open(destination.parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
             return content_hash
         finally:
             try:
                 temporary.unlink(missing_ok=True)
             except OSError:
                 pass
+
+    @staticmethod
+    def _copy_payload(source: Path, destination: Path, verification: str) -> str:
+        if verification == "size":
+            shutil.copy2(source, destination)
+            return ""
+        digest = hashlib.new(verification)
+        with source.open("rb") as reader, destination.open("wb") as writer:
+            for chunk in iter(lambda: reader.read(4 * 1024 * 1024), b""):
+                writer.write(chunk)
+                digest.update(chunk)
+        shutil.copystat(source, destination)
+        return digest.hexdigest()
 
     def _archive_replica_existing(
         self,
@@ -502,10 +539,12 @@ class Organizer:
         card: CardMarker,
         primary_destination: Path,
         stats: ImportStats,
+        *, source_override: Path | None = None,
     ) -> tuple[list[dict[str, object]], bool]:
         if not self.replica_destinations:
             return [], True
         relative_path = primary_destination.relative_to(self.destination_root)
+        source = source_override or primary_destination
         verification = self.config["safety"].get("replica_verification", "sha256")
         records: list[dict[str, object]] = []
         required_ok = True
@@ -523,7 +562,7 @@ class Organizer:
             }
             try:
                 enough, reason, hard_limit = self._destination_space_status(
-                    replica_root, primary_destination.stat().st_size
+                    replica_root, source.stat().st_size
                 )
                 if not enough:
                     continue_below_reserve = (
@@ -557,7 +596,7 @@ class Organizer:
 
                 if destination.exists():
                     matches, _checksum = self._same_content(
-                        primary_destination, destination, verification
+                        source, destination, verification
                     )
                     if matches:
                         record["status"] = "verified_existing"
@@ -598,7 +637,7 @@ class Organizer:
                     )
                     record["archived_existing"] = archived.relative_to(replica_root).as_posix()
 
-                self._copy_and_verify(primary_destination, destination, verification)
+                self._copy_and_verify(source, destination, verification)
                 record["status"] = "verified"
             except StopCardRequested:
                 raise
@@ -710,11 +749,15 @@ class Organizer:
         capture_group: str = "",
     ) -> None:
         safety = self.config["safety"]
-        metadata = metadata or extract_metadata(source, media_kind)
+        metadata = metadata or self.manifest.cached_metadata(source, media_kind) or extract_metadata(source, media_kind)
         if capture_group and not metadata.capture_group:
             metadata.capture_group = capture_group
-        metadata.location_name = self.geocoder.place_name(metadata.latitude, metadata.longitude)
+        if card.source_type != "reorganization":
+            metadata.location_name = self.geocoder.place_name(metadata.latitude, metadata.longitude)
         requested_destination = self._destination_for(card, source, media_kind, metadata)
+        if card.source_type == "reorganization" and requested_destination.resolve() == source.resolve():
+            stats.skipped += 1
+            return
         verification = (
             safety.get("move_checksum_algorithm", "sha256")
             if card.action == "move"
@@ -747,7 +790,8 @@ class Organizer:
                     destination=str(destination),
                 )
             else:
-                self.manifest.clear_pending(source_key)
+                if not self.dry_run:
+                    self.manifest.clear_pending(source_key)
 
         if destination is None:
             destination, content_hash, conflict_info = self._resolve_conflict(
@@ -838,7 +882,21 @@ class Organizer:
                 warning = f"Could not add {source.name} to conflict review: {exc}"
                 stats.warnings.append(warning)
                 self._emit("warning", warning, source=str(source))
+                if card.source_type == "reorganization":
+                    raise
 
+        if resumed_primary and card.source_type == "reorganization":
+            conflict_root = self.destination_root / self._safe_prefix(safety["conflict_folder"])
+            if conflict_root in destination.parents:
+                matches, _ = self._same_content(source, requested_destination, comparison_algorithm)
+                self.manifest.record_conflict(
+                    source_key=source_key, card_id=card.card_id, source_path=source,
+                    existing_path=requested_destination, incoming_path=destination,
+                    conflict_type="exact_duplicate" if matches else "filename_conflict",
+                    resolution="conflict_folder", content_checksum=content_hash,
+                )
+
+        verified_destination_stat = destination.stat()
         replica_records, required_replicas_ok = self._replicate_file(card, destination, stats)
         if not required_replicas_ok:
             stats.blocked += 1
@@ -870,13 +928,18 @@ class Organizer:
             self._emit("warning", warning, source=str(source))
             return
         try:
-            self.manifest.clear_pending(source_key)
+            if card.source_type != "reorganization":
+                self.manifest.clear_pending(source_key)
         except (OSError, sqlite3.Error) as exc:
             warning = f"Completed {source.name}, but could not clear its pending marker: {exc}"
             stats.warnings.append(warning)
             self._emit("warning", warning, source=str(source))
         stats.imported += 1
         stats.bytes_imported += source_stat.st_size
+        try:
+            self.manifest.cache_metadata(destination, metadata)
+        except (OSError, sqlite3.Error):
+            pass
         self._emit(
             "success",
             f"{card.action.capitalize()} verified: {source.name}",
@@ -908,7 +971,27 @@ class Organizer:
         while True:
             for attempt in range(delete_attempts):
                 try:
+                    if not self._same_snapshot(source.stat(), source_stat) or not self._same_snapshot(destination.stat(), verified_destination_stat):
+                        raise SourceChangedError("File changed after verification; source retained")
+                    if card.source_type == "reorganization":
+                        if self.destination_root.resolve() not in destination.resolve().parents:
+                            raise SourceChangedError("The destination no longer belongs to this library.")
+                        if not self._same_snapshot(source.stat(), source_stat):
+                            raise SourceChangedError("Source changed before cleanup; the original was retained.")
+                        self.manifest.relocate_destinations(source, destination)
+                        from .integrity import IntegrityCatalog
+                        catalog = IntegrityCatalog(self.destination_root, self.config.get("local_history", {}).get("directory") or None)
+                        catalog.relocate(source, destination)
+                        if self.config.get("organization", {}).get("checksum_new_baselines", False):
+                            relative = destination.relative_to(catalog.root).as_posix()
+                            if relative not in catalog.records():
+                                catalog.record(destination, content_hash, verification, verified=True)
                     source.unlink()
+                    if card.source_type == "reorganization":
+                        try:
+                            self.manifest.clear_pending(source_key)
+                        except (OSError, sqlite3.Error) as exc:
+                            stats.warnings.append(f"Moved {source.name}, but could not clear its pending marker: {exc}")
                     return
                 except OSError as exc:
                     delete_error = exc
@@ -973,6 +1056,10 @@ class Organizer:
         return DecisionResult("stop" if policy == "stop_card" else "skip")
 
     def scan_card(self, card: CardMarker, *, allow_destructive: bool = False) -> ImportStats:
+        with self.manifest.processing_session():
+            return self._scan_card(card, allow_destructive=allow_destructive)
+
+    def _scan_card(self, card: CardMarker, *, allow_destructive: bool = False) -> ImportStats:
         stats = ImportStats(card_id=card.card_id, card_name=card.name, action=card.action)
         output_roots = [("primary destination", self.destination_root)]
         output_roots.extend(
@@ -980,6 +1067,9 @@ class Organizer:
             for replica in self.replica_destinations
         )
         for label, output_root in output_roots:
+            if (card.source_type == "reorganization" and label == "primary destination"
+                    and card.root.resolve() == output_root.resolve()):
+                continue
             if self._paths_overlap(card.root, output_root):
                 message = (
                     f"{card.name}: the {label} overlaps the source root "
@@ -1059,7 +1149,7 @@ class Organizer:
                 f"replica {replica['name']}",
             )
         safety = self.config["safety"]
-        confirmation_required = bool(safety.get("confirm_destructive_actions", True))
+        confirmation_required = card.source_type == "reorganization" or bool(safety.get("confirm_destructive_actions", True))
         destructive_allowed = self.dry_run or allow_destructive or not confirmation_required
 
         try:
@@ -1072,14 +1162,34 @@ class Organizer:
         except OSError as exc:
             stats.warnings.append(f"Could not read source capacity for {card.name}: {exc}")
 
-        source_files = sorted(
-            self._source_files(card),
+        source_files = list(self._source_files(card))
+        if card.source_type != "reorganization":
+            source_files.sort(
             key=lambda item: (
                 item[0].relative_to(card.root).as_posix().casefold(),
                 item[1],
             ),
         )
+        bracket_context = source_files
         total_files = len(source_files)
+        # Skip completed files before bracket analysis and per-file database lookups.
+        completed_keys = self.manifest.completed_keys(card.card_id)
+        if card.source_type != "reorganization" and completed_keys:
+            remaining = []
+            for source, kind in source_files:
+                try:
+                    stat = source.stat()
+                    key = self.source_key(card, source.relative_to(card.root), stat.st_size, stat.st_mtime_ns)
+                except OSError:
+                    remaining.append((source, kind))
+                    continue
+                if key in completed_keys:
+                    stats.discovered += 1
+                    stats.skipped += 1
+                else:
+                    remaining.append((source, kind))
+            source_files = remaining
+            total_files = len(source_files)
         metadata_by_path: dict[Path, MediaMetadata] = {}
         capture_groups: dict[tuple[str, str], str] = {}
         bracket_settings = self.config.get("organization", {}).get(
@@ -1096,11 +1206,12 @@ class Organizer:
         )
         bracket_sources = [
             (source, media_kind)
-            for source, media_kind in source_files
+            for source, media_kind in (bracket_context if source_files else [])
             if media_kind in {"photo", "raw"}
         ]
         if (
             bracket_settings.get("enabled", False)
+            and card.source_type != "reorganization"
             and bracket_folder_used
             and bracket_sources
         ):
@@ -1138,7 +1249,7 @@ class Organizer:
                         stage="Analyzing",
                     )
             group_count = assign_long_exposure_groups(
-                source_files,
+                bracket_context,
                 metadata_by_path,
                 bracket_settings,
             )
@@ -1196,7 +1307,7 @@ class Organizer:
                 and primary_local_history is not None
                 and primary_local_history.contains(source_key)
             )
-            if (
+            if card.source_type != "reorganization" and (
                 (history is not None and history.contains(source_key))
                 or self.manifest.contains(source_key)
                 or completed_locally
@@ -1245,7 +1356,8 @@ class Organizer:
                     break
                 except SourceChangedError as exc:
                     try:
-                        self.manifest.clear_pending(source_key)
+                        if not self.dry_run:
+                            self.manifest.clear_pending(source_key)
                     except (OSError, sqlite3.Error) as pending_error:
                         stats.warnings.append(
                             f"Could not clear the deferred marker for {source.name}: {pending_error}"
@@ -1306,7 +1418,8 @@ class Organizer:
                 card_id=card.card_id,
             )
         if card.action == "move" and destructive_allowed and card.delete_empty_folders_after_move:
-            self._remove_empty_source_folders(card)
+            if not self.dry_run:
+                self._remove_empty_source_folders(card)
         return stats
 
     @staticmethod
@@ -1334,6 +1447,9 @@ class Organizer:
         cards, discovery_errors = discover_cards(self.config)
         for error in discovery_errors:
             self._emit("error", error)
+        return self.scan_cards(cards, allow_destructive=allow_destructive), discovery_errors
+
+    def scan_cards(self, cards: list[CardMarker], *, allow_destructive: bool = False) -> list[ImportStats]:
         results = []
         for card in cards:
             aggregate = ImportStats(card_id=card.card_id, card_name=card.name, action=card.action)
@@ -1373,4 +1489,4 @@ class Organizer:
                 )
                 aggregate.failed += 1
             results.append(aggregate)
-        return results, discovery_errors
+        return results

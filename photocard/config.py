@@ -23,6 +23,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "destination_root": "~/Pictures/Photo Card Library",
     "default_library_id": "",
     "library_destinations": [],
+    "media_library_routes": {
+        "photo": "",
+        "raw": "",
+        "video": "",
+        "sidecar": "",
+    },
     "identification": {
         "folder_name": ".photocard",
         "identity_filename": "identity.json",
@@ -52,7 +58,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "digest_inboxes": [],
     "replica_destinations": [],
     "monitor": {
-        "poll_seconds": 5,
+        "poll_seconds": 30,
+        "idle_scan_max_seconds": 300,
         "settle_seconds": 3,
         "start_minimized": False,
     },
@@ -60,6 +67,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "backup_before_migration": True,
     },
     "organization": {
+        "checksum_new_baselines": False,
         "long_exposure_brackets": {
             "enabled": False,
             "folder_name": "Long Exposure Brackets",
@@ -77,11 +85,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "minimum_destination_free_percent": 10.0,
         "minimum_destination_free_gb": 5.0,
         "warn_source_free_percent": 10.0,
-        "conflict_policy": "rename",
+        "conflict_policy": "conflict_folder",
         "exact_duplicate_policy": "rename",
         "conflict_filename_appendage": "_{number}",
         "conflict_folder": "Conflicts",
-        "manual_conflict_prompt": True,
+        "manual_conflict_prompt": False,
         "manual_duplicate_prompt": False,
         "space_policy": "fallback_then_block",
         "manual_space_prompt": True,
@@ -447,6 +455,11 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     migrated, _original_schema = migrate_config_data(config)
     normalized = deep_merge(DEFAULT_CONFIG, migrated)
     normalized["schema"] = CURRENT_CONFIG_SCHEMA
+    for key, default, minimum in (("poll_seconds", 30, 1), ("idle_scan_max_seconds", 300, 30)):
+        value = float(normalized["monitor"].get(key, default))
+        if not minimum <= value <= 86400:
+            raise ValueError(f"monitor.{key} must be between {minimum} and 86400 seconds.")
+        normalized["monitor"][key] = value
     normalized["destination_root"] = str(
         Path(normalized["destination_root"]).expanduser()
     )
@@ -560,6 +573,15 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         normalized["destination_root"] = str(selected_library["root"])
     instance["library_id"] = str(selected_library["id"])
 
+    routes = normalized.get("media_library_routes", {})
+    if not isinstance(routes, dict):
+        routes = {}
+    valid_ids = {str(library["id"]) for library in libraries}
+    normalized["media_library_routes"] = {
+        kind: str(routes.get(kind, "")) if str(routes.get(kind, "")) in valid_ids else ""
+        for kind in ("photo", "raw", "video", "sidecar")
+    }
+
     profiles: list[dict[str, Any]] = []
     profile_ids: set[str] = set()
     for profile in normalized.get("card_profiles", []):
@@ -636,8 +658,10 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         safety["move_checksum_algorithm"] = "sha256"
     if safety["replica_verification"] not in {"sha256", "sha512", "blake2b"}:
         safety["replica_verification"] = "sha256"
-    if safety["conflict_policy"] not in {"ask", "rename", "conflict_folder", "skip"}:
-        safety["conflict_policy"] = "rename"
+    # Different-content filename collisions always enter the local review queue.
+    # Normalize legacy choices so upgrades cannot silently skip or pause a batch.
+    safety["conflict_policy"] = "conflict_folder"
+    safety["manual_conflict_prompt"] = False
     if safety["exact_duplicate_policy"] not in {"rename", "conflict_folder", "skip"}:
         safety["exact_duplicate_policy"] = "rename"
     appendage = str(safety.get("conflict_filename_appendage", "_{number}"))
