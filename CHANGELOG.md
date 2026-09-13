@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.11.0 - 2026-09-13
+
+- Fixed the Integrity whole-library action to start verification, report empty libraries clearly, and clear stale results when switching libraries.
+- Added selected-file recovery from multiple configured backups. Only staged copies matching immutable saved checksums are accepted; damaged originals and durable local/portable recovery journals are preserved.
+- Added optional per-library folder and filename rules in Edit library > Organization settings. Global rules remain inherited unless overridden. Reorganization saves changes only to the selected library.
+- Added removable/network backup types that refuse to create missing mount folders. Required backup failures retain move sources. Existing backup versions use no-overwrite archival renames.
+- Improved jade-button text contrast and refreshed the guide and GitHub visuals. Added a Linux CI test job.
+- Configuration schema 6 migrates older settings with the existing backup-before-migration workflow. Recovery currently searches matching relative paths in configured backup roots; archived versions can be supplied as a separate backup root. Scheduled repair and automatic backup catch-up remain future work.
+
 ## 0.10.2 - 2026-09-13
 
 - Added the graphite, jade, and muted-coral visual theme, a matching SD-card/photo application mark, and a packaged SVG brand asset.

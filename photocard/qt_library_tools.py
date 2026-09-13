@@ -77,7 +77,7 @@ class ReorganizationDialog(QDialog):
         for name in ORGANIZATION_PRESETS:
             self.preset.addItem("Separate by media type" if name == "Media folder only" else name, name)
         self.preset.setCurrentIndex(self.preset.findData("Media folder only"))
-        self.preset.setToolTip("Choose folders for existing files. Original filenames are retained.")
+        self.preset.setToolTip("Current detailed rules use this library's saved folder and filename rules. Other presets keep original filenames.")
         form.addRow("Folder layout", self.preset)
         media_row = QHBoxLayout()
         self.media = {}
@@ -91,9 +91,9 @@ class ReorganizationDialog(QDialog):
         form.addRow("Media to reorganize", media_row)
         layout.addLayout(form)
         self.preset.currentIndexChanged.connect(self.invalidate)
-        self.save_layout = QCheckBox("Use this folder layout for future imports")
+        self.save_layout = QCheckBox("Save this layout for this library's future imports")
         self.save_layout.setChecked(True)
-        self.save_layout.setToolTip("Commit the selected media folder rules when processing starts. Other settings and the default library stay unchanged.")
+        self.save_layout.setToolTip("Save library-specific naming rules when processing starts. Other libraries and global organization stay unchanged.")
         self.cleanup = QCheckBox("Remove folders left empty")
         self.cleanup.setToolTip("Remove only empty media folders found during preview. Library metadata and conflict folders are protected.")
         layout.addWidget(self.save_layout)

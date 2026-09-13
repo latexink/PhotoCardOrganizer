@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from .config import (
+    DEFAULT_CONFIG,
     normalize_config,
     normalize_digest_inbox,
     normalize_library_destination,
@@ -53,6 +54,7 @@ from .qt_common import (
     preset_folder_segments,
 )
 from .structure_detection import StructureAnalysis
+from .templates import SEGMENT_LABELS
 
 
 def is_yes(result: QMessageBox.StandardButton) -> bool:
@@ -621,6 +623,63 @@ class CardProfileDialog(QDialog):
         super().accept()
 
 
+class LibraryOrganizationDialog(QDialog):
+    def __init__(self, parent, overrides, defaults):
+        super().__init__(parent)
+        self.setWindowTitle("Library organization")
+        self.resize(660, 580)
+        layout = QVBoxLayout(self)
+        tabs = QTabWidget()
+        layout.addWidget(tabs)
+        self.controls = {}
+        for kind, label in MEDIA_LABELS.items():
+            page = QWidget()
+            page_layout = QVBoxLayout(page)
+            enabled = QCheckBox("Use separate organization for this library")
+            enabled.setChecked(kind in overrides)
+            enabled.setToolTip("Unchecked uses the saved global Organization settings, including future changes.")
+            page_layout.addWidget(enabled)
+            editor = QWidget()
+            form = QFormLayout(editor)
+            rule = overrides.get(kind, defaults[kind])
+            filename = QLineEdit(rule.get("filename_template", "{original}"))
+            filename.setToolTip("Filename template without extension, for example {original} or {date:%Y-%m-%d}_{original}.")
+            form.addRow("Filename template", filename)
+            segments = []
+
+            def add_level(_checked=False, *, target=form, boxes=segments, value=""):
+                box = choice_combo(list(SEGMENT_LABELS.items()), value)
+                box.setEditable(True)
+                set_combo_data(box, value)
+                box.setToolTip("Choose a folder field, enter a custom folder name, or choose None to omit this level.")
+                boxes.append(box)
+                target.addRow(f"Folder level {len(boxes)}", box)
+
+            for value in rule.get("folder_segments", []):
+                add_level(value=value)
+            add = QPushButton("Add folder level")
+            add.clicked.connect(add_level)
+            form.addRow(add)
+            editor.setEnabled(enabled.isChecked())
+            enabled.toggled.connect(editor.setEnabled)
+            page_layout.addWidget(editor)
+            page_layout.addStretch(1)
+            area = QScrollArea()
+            area.setWidgetResizable(True)
+            area.setWidget(page)
+            tabs.addTab(area, label)
+            self.controls[kind] = enabled, filename, segments
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def values(self):
+        return {kind: {"filename_template": filename.text().strip() or "{original}",
+                       "folder_segments": [combo_value(box) for box in boxes if combo_value(box)]}
+                for kind, (enabled, filename, boxes) in self.controls.items() if enabled.isChecked()}
+
+
 class LibraryDestinationDialog(QDialog):
     def __init__(
         self,
@@ -631,6 +690,7 @@ class LibraryDestinationDialog(QDialog):
     ):
         super().__init__(parent)
         self.original = library or {}
+        self.organization_overrides = copy.deepcopy(self.original.get("organization_overrides", {}))
         self.existing_roots = existing_roots
         self.result_library: dict | None = None
         self.setWindowTitle(
@@ -733,6 +793,10 @@ class LibraryDestinationDialog(QDialog):
         form.addRow("Library name", self.name_edit)
         form.addRow("Library folder", root_widget)
         form.addRow("Location type", self.kind_combo)
+        self.organization_button = QPushButton("Organization settings...")
+        self.organization_button.setToolTip("Inherit global organization or choose separate folder and filename rules for this library. Saving does not move existing files.")
+        self.organization_button.clicked.connect(self.edit_organization)
+        form.addRow("Organization", self.organization_button)
         form.addRow("", self.advanced_storage_check)
         form.addRow(self.storage_label, self.storage_combo)
         form.addRow("", self.enabled_check)
@@ -752,6 +816,12 @@ class LibraryDestinationDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def edit_organization(self):
+        defaults = getattr(self.parent(), "config", DEFAULT_CONFIG)["media_rules"]
+        dialog = LibraryOrganizationDialog(self, self.organization_overrides, defaults)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.organization_overrides = dialog.values()
 
     def accept(self) -> None:
         name = self.name_edit.text().strip()
@@ -786,6 +856,7 @@ class LibraryDestinationDialog(QDialog):
             "root": root,
             "kind": combo_value(self.kind_combo),
             "storage_profile": combo_value(self.storage_combo),
+            "organization_overrides": self.organization_overrides,
             "enabled": self.enabled_check.isChecked(),
         }
         self.result_library = normalize_library_destination(candidate)
@@ -813,9 +884,13 @@ class ReplicaDialog(QDialog):
             title="Choose a backup destination",
         )
         self.conflict_combo = choice_combo(
-            [("Block replica", "block"), ("Archive existing and replace", "archive_and_replace")],
+            [("Keep existing; report conflict", "block"), ("Keep old version and replace", "archive_and_replace")],
             str(self.original.get("conflict_policy", "block")),
         )
+        self.kind_combo = choice_combo([
+            ("Local folder", "local"), ("Mounted network folder", "network"),
+            ("Removable drive", "removable")], self.original.get("kind", "local"))
+        self.kind_combo.setToolTip("Removable and network backup folders must already exist. An unavailable destination is reported and is never created on a different local mount path.")
         self.enabled_check = QCheckBox("Destination enabled")
         self.enabled_check.setChecked(bool(self.original.get("enabled", True)))
         self.required_check = QCheckBox("Required before an import is complete")
@@ -830,6 +905,7 @@ class ReplicaDialog(QDialog):
         self.history_check.setToolTip("Write matching session and checksum records alongside this backup.")
         form.addRow("Name", self.name_edit)
         form.addRow("Destination root", root_widget)
+        form.addRow("Location type", self.kind_combo)
         form.addRow("Existing-file policy", self.conflict_combo)
         form.addRow("", self.enabled_check)
         form.addRow("", self.required_check)
@@ -864,6 +940,7 @@ class ReplicaDialog(QDialog):
             "required": self.required_check.isChecked(),
             "include_history": self.history_check.isChecked(),
             "conflict_policy": combo_value(self.conflict_combo),
+            "kind": combo_value(self.kind_combo),
         }
         self.result_replica = normalize_replica_destination(candidate)
         super().accept()

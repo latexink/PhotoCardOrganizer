@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (QComboBox, QFileDialog, QFormLayout, QHBoxLayout,
     QLabel, QMessageBox, QProgressBar, QPushButton, QTableView, QVBoxLayout, QWidget)
 
 from .integrity import IntegrityCatalog
+from .integrity_restore import restore_file
 from .qt_library_tools import LazyTableModel
 
 
@@ -56,6 +57,7 @@ class IntegrityPanel(QWidget):
         self.table = QTableView()
         self.table.setModel(self.model)
         self.table.setSelectionBehavior(QTableView.SelectionBehavior.SelectRows)
+        self.table.setSelectionMode(QTableView.SelectionMode.ExtendedSelection)
         self.table.setAlternatingRowColors(True)
         self.table.setWordWrap(False)
         self.table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
@@ -79,10 +81,16 @@ class IntegrityPanel(QWidget):
         self.open_report.setEnabled(False)
         self.open_report.setToolTip("Open the saved verification report from the library integrity folder.")
         self.open_report.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.report))))
-        self.all_files = QPushButton("Whole library")
-        self.all_files.setToolTip("Clear the file selection and include every enabled media file plus missing baseline entries.")
-        self.all_files.clicked.connect(self.clear_selection)
+        self.all_files = QPushButton("Verify whole library")
+        self.all_files.setToolTip("Start verification of every enabled media file and every recorded baseline in the selected library.")
+        self.all_files.clicked.connect(self.verify_whole_library)
+        self.restore = QPushButton("Restore selected from backup")
+        self.restore.setToolTip("Restore selected failed or missing files only from a backup matching the saved checksum. Preserve damaged originals in the integrity recovery folder.")
+        self.restore.setEnabled(False)
+        self.restore.clicked.connect(self.restore_selected)
+        self.table.selectionModel().selectionChanged.connect(self.update_restore)
         footer.addWidget(self.all_files)
+        footer.addWidget(self.restore)
         footer.addStretch(1)
         footer.addWidget(self.open_report)
         footer.addWidget(self.stop)
@@ -120,6 +128,32 @@ class IntegrityPanel(QWidget):
     def clear_selection(self):
         self.selected_paths = None
         self.scope.setText("Whole library")
+        if hasattr(self, "restore"):
+            self.model.replace_rows([])
+            self.report = None
+            self.open_report.setEnabled(False)
+            self.update_restore()
+
+    def update_restore(self, *_):
+        self.restore.setEnabled(not self.running and bool(self.table.selectionModel().selectedRows()))
+
+    def restore_selected(self):
+        paths = [Path(self.model.rows[index.row()][0]) for index in self.table.selectionModel().selectedRows()
+                 if self.model.rows[index.row()][1] in {"Missing", "Changed; baseline retained"}]
+        if not paths:
+            QMessageBox.information(self, "Restore from backup", "Select files reported as missing or changed by a checksum verification.")
+            return
+        if QMessageBox.question(self, "Confirm verified recovery",
+                f"Restore {len(paths)} file(s) from configured backups? Only copies matching the saved checksums will be accepted. Damaged originals will be retained in the library's integrity recovery folder.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self.start(False, restore_paths=paths)
+
+    def verify_whole_library(self):
+        if self.running:
+            return
+        self.clear_selection()
+        self.start(False)
 
     def choose_files(self):
         config = self.config_provider()
@@ -135,8 +169,9 @@ class IntegrityPanel(QWidget):
         for control in (self.library, self.verify, self.create, self.choose, self.all_files):
             control.setEnabled(not value)
         self.stop.setEnabled(value)
+        self.update_restore()
 
-    def start(self, establish):
+    def start(self, establish, *, restore_paths=None):
         if self.running:
             return
         if establish and QMessageBox.question(self, "Create checksum baselines",
@@ -158,6 +193,7 @@ class IntegrityPanel(QWidget):
         self.done.clear()
         self.report = None
         self.open_report.setEnabled(False)
+        self.open_report.setText("Open recovery folder" if restore_paths is not None else "Open report")
         self.model.replace_rows([])
         self.progress.setRange(0, 0)
         self.status.setText("Waiting for other disk operations...")
@@ -165,6 +201,25 @@ class IntegrityPanel(QWidget):
         self.set_running(True)
         def check():
             catalog = IntegrityCatalog(Path(library["root"]))
+            if restore_paths is not None:
+                roots = [p["root"] for p in config.get("replica_destinations", [])
+                         if p.get("enabled", True) and p.get("root")]
+                rows = []
+                for index, path in enumerate(restore_paths):
+                    if self.cancel.is_set():
+                        break
+                    try:
+                        status = restore_file(catalog, path, roots, cancel_event=self.cancel)
+                    except InterruptedError:
+                        break
+                    except Exception as exc:
+                        status = f"Error: {exc}"
+                    rows.append((str(path), status))
+                    self._progress = (index + 1, len(restore_paths), str(path))
+                self.result["rows"] = rows
+                self.result["cancelled"] = self.cancel.is_set()
+                self.result["report"] = catalog.directory / "recovery" if (catalog.directory / "recovery").exists() else None
+                return
             self.result["rows"] = catalog.run_library_check(config, establish=establish, paths=paths,
                 cancel_event=self.cancel, progress=lambda current, total, path: setattr(self, "_progress", (current, total, path)))
             self.result["report"] = catalog.last_report
@@ -200,7 +255,10 @@ class IntegrityPanel(QWidget):
             label = "Error" if status.startswith("Error:") else status
             counts[label] = counts.get(label, 0) + 1
         prefix = "Cancelled" if self.result.get("cancelled") else "Complete"
-        self.status.setText(self.result.get("error") or prefix + " | " + " | ".join(f"{key}: {value}" for key, value in counts.items()))
+        summary = " | ".join(f"{key}: {value}" for key, value in counts.items())
+        if not rows and not self.result.get("cancelled"):
+            summary = "No matching media or saved baselines found in this library."
+        self.status.setText(self.result.get("error") or prefix + " | " + summary)
         self.progress.setRange(0, max(total, 1))
 
     def shutdown(self):

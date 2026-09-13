@@ -177,8 +177,7 @@ def build_library_job(config, sources, *, mode="merge", backup_root=None,
             root = media_root(candidate, kind, source)
             metadata = extract_metadata(source, kind)
             card = folder_import_source(source_root, action="copy")
-            proposed = planner._destination_for(card, source, kind, metadata)
-            destination = root / proposed.relative_to(planner.destination_root)
+            destination = planner._destination_for(card, source, kind, metadata, destination_root=root)
             destination = checked_path(destination)
             if root not in destination.parents or (root / ".photocard-organizer") in destination.parents:
                 raise ValueError(f"Invalid media destination: {destination}")

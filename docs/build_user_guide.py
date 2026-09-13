@@ -29,11 +29,11 @@ with (ROOT / "pyproject.toml").open("rb") as project_file:
     VERSION = str(tomllib.load(project_file)["project"]["version"])
 OUTPUT = ROOT / "output" / "pdf" / f"PhotoCardOrganizer-{VERSION}-User-Guide.pdf"
 
-NAVY = colors.HexColor("#17233A")
+NAVY = colors.HexColor("#202224")
 INK = colors.HexColor("#1F2937")
 MUTED = colors.HexColor("#667085")
-BLUE = colors.HexColor("#1570EF")
-CYAN = colors.HexColor("#06AED4")
+BLUE = colors.HexColor("#207B65")
+CYAN = colors.HexColor("#43B99C")
 GREEN = colors.HexColor("#12805C")
 PALE_GREEN = colors.HexColor("#EAF8F2")
 AMBER = colors.HexColor("#B54708")
@@ -710,17 +710,21 @@ def build_story() -> list:
         ("Choose the library", "In Libraries, select an available library and choose Reorganize library. Save any pending settings first. Monitoring pauses while the plan is prepared."),
         ("Choose the layout", "Separate by media type creates Photos, RAW, Videos, and Sidecars folders. Other presets add date or camera levels; Use current detailed rules keeps the saved folder definitions, including conditional bracket folders. Choose which media classes to include. Filenames are retained."),
         ("Preview changes (optional)", "Read current and proposed paths, including Already organized and potential Conflict review entries. Preview does not change media or save settings. You can select Reorganize directly to calculate the plan and continue to the final confirmation."),
-        ("Review and reorganize", "Read the explicit move warning and summary before accepting. Use this folder layout for future imports commits only the selected folder rules when processing starts; these rules apply to future imports across libraries and do not change the default library. Remove folders left empty is optional."),
+        ("Review and reorganize", "Read the explicit move warning and summary before accepting. Save this layout for this library's future imports commits library-specific naming rules when processing starts. Other libraries and global rules remain unchanged. Remove folders left empty is optional."),
     ])
     story += [
         callout("Preserve an independent backup", "Same-filesystem changes use durable no-overwrite renames without reading media content again. Cross-filesystem moves use a verified destination copy before deleting the original. Required backups and local transfer records must succeed. File changes since planning are deferred; failed catalog updates retain a resumable intent. Existing filenames are never overwritten, including exact duplicates: conflicts are kept in the configured organized conflict folder for review.", "warn"),
         p("The fixed plan prevents generated files from becoming new inputs. Metadata, identity, and conflict folders are excluded. Local catalog paths follow moved files; historical session logs remain append-only. Compatible folders can move as one rename only when every member is known media; an unrelated file keeps the operation at the individual-file level. Optional checksum creation reads only files with no baseline. On failure, review Activity and retry; do not manually remove a pending rename intent."),
-        p("Location rules use place names already cached locally during preview; no online requests are made. Missing capture dates use file modification time. This action changes folders only: edit filename templates for future imports in Organization or use Import or merge into a separate library for a reviewed rename workflow."),
+        p("Location rules use cached place names during preview; no online requests are made. Missing capture dates use file modification time. Use current detailed rules applies saved folder and filename templates, including library overrides; other presets retain original filenames."),
         PageBreak(),
     ]
 
     story += chapter("Integrity checks")
     story += [
+        p("Verify whole library starts a complete check immediately. Select changed or missing results, then Restore selected from backup. Recovery checks configured enabled backup roots at the same relative file path and accepts only bytes matching the original saved checksum. A checksum detects damage; it cannot reconstruct it without a good copy."),
+        p("Recovery preserves damaged originals under .photocard-organizer/integrity/recovery/OPERATION/original and writes matching local and portable journals before replacement. After an interruption, the staged copy and original remain available; rerun verification and recovery with the backup connected. Never remove recovery folders until you have reviewed their contents."),
+        p("Libraries > Edit selected > Organization settings offers per-media folder and filename overrides. Unchecked media inherit the global Organization settings. Saving settings does not move existing media; use Reorganize library and its final confirmation."),
+        p("Safety > Backups and clones supports multiple destinations. Mark removable or network destinations appropriately: missing folders are reported, not created on an absent mount. Required failures retain move sources. Reconnect and retry the import. Keep old version and replace preserves earlier backup files in Conflicts/Replica existing; these are not automatically pruned. Recovery from an archived version requires configuring its containing archive root as another backup destination."),
         p("Open Integrity or choose Verify integrity from Libraries. Select a library and optionally select individual files, then use Verify library. Each checked file is read once and compared with its saved checksum. Results distinguish Verified, Changed; baseline retained, Missing, and No baseline. A report is saved in the library and matching local application state."),
         p("Create missing checksums records the current contents only for files without a baseline. It never replaces an existing checksum and cannot prove that a new baseline is an original good copy. Cancel stops after the current read chunk and retains completed results in the report."),
         callout("Baseline records", "The portable catalog is stored at .photocard-organizer/integrity/catalog.sqlite3. Existing root-level integrity.sqlite3 catalogs are copied atomically into this location when first written and the older file remains as a rollback copy. Do not compress the live SQLite catalog or journal files.", "info"),
@@ -991,6 +995,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.11.0", "2026-09-13", "Verified backup recovery, library-specific naming rules, removable backup safeguards, Integrity action fixes, and schema-6 settings migration."],
                 ["0.10.2", "2026-09-13", "Graphite, jade, and coral visual theme, refreshed application mark, and packaged SVG brand asset."],
                 ["0.10.1", "2026-09-13", "Estimated transfer time remaining with average read/write rates and focused progress telemetry tests."],
                 ["0.10.0", "2026-09-08", "Integrity checks, resumable same-filesystem reorganization, lower-I/O verification, and expanded folder levels."],

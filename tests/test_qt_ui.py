@@ -47,6 +47,33 @@ from photocard.structure_detection import detect_existing_structure
 
 
 class QtWorkflowTests(unittest.TestCase):
+    def test_library_organization_dialog_retains_custom_fields(self):
+        from photocard.qt_dialogs import LibraryOrganizationDialog
+        overrides = {"video": {"folder_segments": ["Client clips", "{date:%Y}"], "filename_template": "clip_{original}"}}
+        dialog = LibraryOrganizationDialog(self.window, overrides, self.window.config["media_rules"])
+        self.assertEqual(dialog.values(), overrides)
+        dialog.controls["video"][0].setChecked(False)
+        self.assertEqual(dialog.values(), {})
+        dialog.deleteLater()
+
+    def test_integrity_library_change_clears_stale_recovery_selection(self):
+        panel = self.window.integrity_panel
+        panel.model.replace_rows([(str(self.base / "image.jpg"), "Missing")])
+        panel.table.selectRow(0)
+        self.assertTrue(panel.restore.isEnabled())
+        panel.clear_selection()
+        self.assertFalse(panel.restore.isEnabled())
+        self.assertEqual(panel.model.rows, [])
+
+    def test_whole_library_button_starts_verification_and_clears_filter(self):
+        panel = self.window.integrity_panel
+        panel.selected_paths = [self.base / "selected.jpg"]
+        with patch.object(panel, "start") as start:
+            panel.all_files.click()
+        self.assertIsNone(panel.selected_paths)
+        self.assertEqual(panel.scope.text(), "Whole library")
+        start.assert_called_once_with(False)
+
     def test_reorganization_can_proceed_without_detailed_preview(self):
         root = Path(self.window.config["destination_root"])
         (root / "old").mkdir(parents=True, exist_ok=True)
@@ -676,7 +703,9 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(self.window._manual_import_running)
         self.assertFalse(source.exists())
         self.assertTrue((self.base / "library/Videos/clip.mp4").exists())
-        self.assertEqual(self.window.config["media_rules"]["video"]["folder_segments"], ["Videos"])
+        self.assertEqual(self.window.config["media_rules"], previous["media_rules"])
+        library = next(item for item in self.window.config["library_destinations"] if item["id"] == previous["default_library_id"])
+        self.assertEqual(library["organization_overrides"]["video"]["folder_segments"], ["Videos"])
         self.assertEqual(self.window.config["default_library_id"], previous["default_library_id"])
         self.assertFalse(self.window._settings_dirty)
 

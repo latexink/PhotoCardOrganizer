@@ -2907,9 +2907,12 @@ class PhotoCardApp(QMainWindow):
                 return
             if dialog.save_layout.isChecked():
                 saved["organization"]["checksum_new_baselines"] = dialog.baselines.isChecked()
+                saved_library = next(item for item in saved["library_destinations"] if item["id"] == selected["id"])
+                overrides = saved_library.setdefault("organization_overrides", {})
                 for kind, check in dialog.media.items():
                     if check.isChecked():
-                        saved["media_rules"][kind]["folder_segments"] = list(plan.config["media_rules"][kind]["folder_segments"])
+                        overrides[kind] = {key: copy.deepcopy(plan.config["media_rules"][kind][key])
+                                           for key in ("folder_segments", "filename_template")}
                 save_config(saved, self.config_path)
                 self.config = saved
                 self._load_config_into_controls()

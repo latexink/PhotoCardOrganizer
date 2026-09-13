@@ -12,7 +12,7 @@ from typing import Any
 
 from . import __version__
 
-CURRENT_CONFIG_SCHEMA = 5
+CURRENT_CONFIG_SCHEMA = 6
 DEFAULT_USER_AGENT = (
     f"PhotoCardOrganizer/{'.'.join(__version__.split('.')[:2])}"
 )
@@ -206,6 +206,12 @@ def migrate_config_data(config: dict[str, Any]) -> tuple[dict[str, Any], int]:
                 copy.deepcopy(DEFAULT_CONFIG["organization"]),
             )
             schema = 5
+        elif schema == 5:
+            for library in migrated.get("library_destinations", []):
+                library.setdefault("organization_overrides", {})
+            for replica in migrated.get("replica_destinations", []):
+                replica.setdefault("kind", "local")
+            schema = 6
         else:
             raise ValueError(f"No configuration migration is available from schema {schema}.")
         migrated["schema"] = schema
@@ -277,6 +283,9 @@ def normalize_replica_destination(replica: dict[str, Any]) -> dict[str, Any] | N
     if conflict_policy not in {"block", "archive_and_replace"}:
         conflict_policy = "block"
     root = str(replica.get("root", "")).strip()
+    kind = str(replica.get("kind", "local"))
+    if kind not in {"local", "network", "removable"}:
+        kind = "local"
     return {
         "id": replica_id,
         "name": name,
@@ -285,6 +294,7 @@ def normalize_replica_destination(replica: dict[str, Any]) -> dict[str, Any] | N
         "required": bool(replica.get("required", True)),
         "include_history": bool(replica.get("include_history", True)),
         "conflict_policy": conflict_policy,
+        "kind": kind,
     }
 
 
@@ -304,14 +314,38 @@ def normalize_library_destination(
     ).strip().lower()
     if storage_profile not in {"auto", "ssd", "hdd", "network"}:
         storage_profile = "auto"
+    overrides = {}
+    raw_overrides = library.get("organization_overrides") or {}
+    if not isinstance(raw_overrides, dict):
+        raise ValueError("Library organization overrides must be a mapping")
+    for kind, rule in raw_overrides.items():
+        if kind in DEFAULT_CONFIG["media_rules"] and isinstance(rule, dict):
+            if not isinstance(rule.get("folder_segments", []), list):
+                raise ValueError("Library folder levels must be a list")
+            overrides[kind] = {
+                "folder_segments": [str(value) for value in rule.get("folder_segments", []) if str(value).strip()],
+                "filename_template": str(rule.get("filename_template", "{original}")) or "{original}",
+            }
     return {
         "id": library_id,
         "name": name,
         "root": str(Path(root).expanduser()) if root else "",
         "kind": kind,
         "storage_profile": storage_profile,
+        "organization_overrides": overrides,
         "enabled": bool(library.get("enabled", True)),
     }
+
+
+def library_media_rule(config, root, kind):
+    """Resolve only naming overrides; global media enablement stays unchanged."""
+    rule = copy.deepcopy(config["media_rules"][kind])
+    key = os.path.normcase(os.path.abspath(Path(root).expanduser()))
+    for library in config.get("library_destinations", []):
+        if library.get("root") and os.path.normcase(os.path.abspath(Path(library["root"]).expanduser())) == key:
+            rule.update(library.get("organization_overrides", {}).get(kind, {}))
+            break
+    return rule
 
 
 def library_destination(

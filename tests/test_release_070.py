@@ -59,6 +59,7 @@ class Release070Tests(unittest.TestCase):
                     "root": str(library),
                     "kind": "local",
                     "storage_profile": "auto",
+                    "organization_overrides": {},
                     "enabled": True,
                 }
             ],

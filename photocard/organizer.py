@@ -263,11 +263,13 @@ class Organizer:
             parts.append(safe_segment(part))
         return Path(*parts) if parts else Path()
 
-    def _destination_for(self, card: CardMarker, source: Path, media_kind: str, metadata) -> Path:
-        rule = self.config["media_rules"][media_kind]
+    def _destination_for(self, card: CardMarker, source: Path, media_kind: str, metadata, *, destination_root=None) -> Path:
+        from .config import library_media_rule
+        root = destination_root or self.destination_root
+        rule = library_media_rule(self.config, root, media_kind)
         relative_folder = render_folder(rule["folder_segments"], metadata, card, source)
         filename = render_filename(rule["filename_template"], metadata, card, source)
-        return self.destination_root / self._safe_prefix(card.destination_prefix) / relative_folder / filename
+        return root / self._safe_prefix(card.destination_prefix) / relative_folder / filename
 
     def _resolve_conflict(
         self,
@@ -542,7 +544,8 @@ class Organizer:
                 raise OSError(
                     f"Could not find an available replica archive filename near {archive}"
                 )
-        shutil.move(str(existing_path), str(archive))
+        from .atomic_copy import relocate_without_overwrite
+        relocate_without_overwrite(existing_path, archive)
         return archive
 
     def _replicate_file(
@@ -572,6 +575,9 @@ class Organizer:
                 "status": "failed",
             }
             try:
+                if replica.get("kind") in {"network", "removable"} and not replica_root.is_dir():
+                    record["status"] = "unavailable"
+                    raise OSError("Backup folder is unavailable. Reconnect the drive or mount before retrying; no folder was created.")
                 enough, reason, hard_limit = self._destination_space_status(
                     replica_root, source.stat().st_size
                 )

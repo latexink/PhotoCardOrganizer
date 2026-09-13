@@ -17,6 +17,7 @@ from .organizer import Organizer, SourceChangedError
 from .qt_common import preset_folder_segments
 from .atomic_copy import same_filesystem, relocate_without_overwrite
 from .integrity import IntegrityCatalog, checksum, checked_path
+from .config import library_media_rule
 
 
 @dataclass(frozen=True)
@@ -52,10 +53,18 @@ def build_reorganization_plan(config: dict, preset: str, media: set[str], *,
     read_library_metadata(root)
     if not media:
         raise ValueError("Select at least one media type.")
+    effective_rules = {kind: library_media_rule(candidate, root, kind) for kind in candidate["media_rules"]}
+    # The plan freezes the effective layout; do not let stored overrides mask
+    # a new preset selected explicitly for this operation.
+    for library in candidate.get("library_destinations", []):
+        if Path(library["root"]).expanduser().resolve() == root:
+            library["organization_overrides"] = {}
     for kind, rule in candidate["media_rules"].items():
+        rule.update(effective_rules[kind])
         rule["enabled"] = kind in media
         rule["folder_segments"] = preset_folder_segments(kind, preset, rule["folder_segments"])
-        rule["filename_template"] = "{original}"
+        if preset != "Use current detailed rules":
+            rule["filename_template"] = "{original}"
     candidate["monitor"]["settle_seconds"] = 0
     candidate["local_history"]["enabled"] = True
     candidate["local_history"]["require_before_source_delete"] = True
@@ -92,6 +101,7 @@ def build_reorganization_plan(config: dict, preset: str, media: set[str], *,
             snapshot = source.stat()
             segments = candidate["media_rules"][kind]["folder_segments"]
             needs_metadata = any("{" in value and value not in {"{media}", "{ext}", "{card}", "{card_id}"} for value in segments)
+            needs_metadata = needs_metadata or candidate["media_rules"][kind]["filename_template"] != "{original}"
             metadata = (planner.manifest.cached_metadata(source, kind) or extract_metadata(source, kind)) if needs_metadata else MediaMetadata(
                 captured_at=datetime.fromtimestamp(snapshot.st_mtime), media_kind=kind,
             )

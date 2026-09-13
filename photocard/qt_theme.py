@@ -105,7 +105,7 @@ QPushButton:disabled, QToolButton:disabled {{
     background: #2a2e30;
 }}
 QPushButton[accent="true"] {{
-    color: white;
+    color: #102a23;
     background: {COLORS['accent']};
     border: 1px solid {COLORS['accent']};
     font-weight: 600;
