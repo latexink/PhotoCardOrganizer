@@ -129,6 +129,7 @@ class ImportManifest:
             connection.execute("PRAGMA journal_mode=WAL")
             connection.executescript(
                 """
+                BEGIN IMMEDIATE;
                 CREATE TABLE IF NOT EXISTS metadata_cache (
                     path TEXT PRIMARY KEY,
                     signature TEXT NOT NULL,
@@ -227,6 +228,7 @@ class ImportManifest:
                 );
                 CREATE INDEX IF NOT EXISTS digest_runs_profile_idx
                     ON digest_runs(profile_id, started_at);
+                COMMIT;
                 """
             )
 
@@ -660,6 +662,12 @@ class ImportManifest:
         if not self.path.exists():
             return empty
         with self._connection() as connection:
+            # A new database file is visible before its schema transaction commits.
+            tables = {row[0] for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('digest_items', 'digest_runs')"
+            )}
+            if tables != {"digest_items", "digest_runs"}:
+                return empty
             counts = connection.execute(
                 """
                 SELECT

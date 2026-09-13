@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -17,7 +18,7 @@ class InstallationDetectionTests(unittest.TestCase):
         self.temporary.cleanup()
 
     def test_developer_install_exposes_available_maintenance_scripts(self) -> None:
-        install = self.base / "install.bat"
+        install = self.base / ("install.bat" if os.name == "nt" else "install.sh")
         install.write_text("@echo off\n", encoding="ascii")
 
         info = detect_installation(self.base)
@@ -26,6 +27,7 @@ class InstallationDetectionTests(unittest.TestCase):
         self.assertEqual(install, info.install_target)
         self.assertIsNone(info.uninstall_target)
 
+    @unittest.skipUnless(os.name == "nt", "Inno Setup installation detection is Windows-specific")
     def test_frozen_windows_install_finds_inno_uninstaller(self) -> None:
         executable = self.base / "PhotoCardOrganizer.exe"
         uninstaller = self.base / "unins000.exe"
