@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.1 - 2026-09-13
+
+- Made new library catalog initialization atomic so digest status queries cannot observe a partially created database.
+- Restored immediate first-run monitoring events and first scans for digest inboxes and transfer hubs.
+- Corrected Linux test assumptions for platform-specific installer behavior. The GitHub Linux suite now passes.
+
 ## 0.11.0 - 2026-09-13
 
 - Fixed the Integrity whole-library action to start verification, report empty libraries clearly, and clear stale results when switching libraries.

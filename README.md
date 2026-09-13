@@ -33,12 +33,12 @@ no-overwrite renames when the source and destination share a filesystem.
 ## Release And Documentation
 
 - [Release downloads](https://github.com/latexink/PhotoCardOrganizer/releases)
-- [Version 0.11.0 user guide](output/pdf/PhotoCardOrganizer-0.11.0-User-Guide.pdf)
+- [Version 0.11.1 user guide](output/pdf/PhotoCardOrganizer-0.11.1-User-Guide.pdf)
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release build and verification](PACKAGING.md)
 
-Version 0.11.0 is an unsigned testing release. Use independent backups.
+Version 0.11.1 is an unsigned testing release. Use independent backups.
 
 ![Libraries in the graphite and jade desktop theme](assets/screenshots/libraries.png)
 
@@ -53,7 +53,7 @@ Screenshots show the actual application with disposable example configuration.
 
 Libraries > Merge library previews content-based deduplication against the selected library using saved organization rules. Libraries > Migrate library verifies a copy, including metadata, to an empty folder before updating its location; originals remain for manual cleanup. Close other clients using either library first.
 
-Version 0.11.0 adds manual verified recovery, per-library naming overrides, and unavailable-mount safeguards. A checksum detects corruption but cannot repair it alone: recovery requires a backup matching the saved baseline. Recovery currently checks the same relative path in configured backup roots. Scheduled checking, automatic backup catch-up, and a consolidated multi-source/clone wizard remain planned.
+Version 0.11.1 includes the 0.11.0 recovery and library-rule features plus atomic catalog startup and immediate first-run monitoring. A checksum detects corruption but cannot repair it alone: recovery requires a backup matching the saved baseline. Recovery currently checks the same relative path in configured backup roots. Scheduled checking, automatic backup catch-up, and a consolidated multi-source/clone wizard remain planned.
 
 New configurations use 30-second connection checks and gradually reduce unchanged-card file scans to a configurable 300-second maximum. `Scan now` bypasses the delay. Saved intervals are preserved, and unchanged metadata and catalog records are reused to reduce disk activity.
 
@@ -90,7 +90,7 @@ The fast local index, pending-transfer recovery data, conflict-review queue, and
 
 ### Windows package
 
-Run `PhotoCardOrganizer-Installer-0.11.0.exe`. This is the separate installer/uninstaller; `PhotoCardOrganizer.exe` is the installed application launcher. The one offline installer contains the application, Python runtime, PySide6 dependencies, and versioned user guide, so client machines do not need Python or internet access. The unsigned Inno Setup wizard installs for the current Windows account without normally requiring administrator access. When it detects the same stable application ID, the installer offers Repair/Upgrade or Uninstall. The Start Menu group also includes `Uninstall Photo Card Organizer`; desktop and login-monitoring shortcuts remain selectable tasks.
+Run `PhotoCardOrganizer-Installer-0.11.1.exe`. This is the separate installer/uninstaller; `PhotoCardOrganizer.exe` is the installed application launcher. The one offline installer contains the application, Python runtime, PySide6 dependencies, and versioned user guide, so client machines do not need Python or internet access. The unsigned Inno Setup wizard installs for the current Windows account without normally requiring administrator access. When it detects the same stable application ID, the installer offers Repair/Upgrade or Uninstall. The Start Menu group also includes `Uninstall Photo Card Organizer`; desktop and login-monitoring shortcuts remain selectable tasks.
 
 Desktop and Start Menu shortcuts are selected by default on a new installation. Repairs and upgrades retain the saved shortcut choices; select Desktop shortcut in the wizard to add one to an existing installation. The application icon is included in launch shortcuts, the executable, installer, Installed Apps entry, application windows, and tray. Launch shortcuts share the application's Windows taskbar identity. Pinning to the taskbar remains a Windows user action.
 
@@ -101,15 +101,15 @@ Application settings are stored separately under `%APPDATA%\PhotoCardOrganizer`.
 Install the Debian package with:
 
 ```bash
-sudo apt install ./photo-card-organizer_0.11.0_amd64.deb
+sudo apt install ./photo-card-organizer_0.11.1_amd64.deb
 photo-card-organizer
 ```
 
 Or make the AppImage executable and run it without installation:
 
 ```bash
-chmod +x PhotoCardOrganizer-0.11.0-x86_64.AppImage
-./PhotoCardOrganizer-0.11.0-x86_64.AppImage
+chmod +x PhotoCardOrganizer-0.11.1-x86_64.AppImage
+./PhotoCardOrganizer-0.11.1-x86_64.AppImage
 ```
 
 Both packages expose the same CLI. Arguments are forwarded to the bundled executable, including `--scan-once`, `--dry-run`, folder imports, identity creation, settings import/export, autostart management, and explicit move confirmation. Debian upgrades preserve per-user configuration under `${XDG_CONFIG_HOME:-$HOME/.config}/PhotoCardOrganizer`; removing the package also leaves this data in place.
@@ -148,7 +148,7 @@ The Linux developer installer detects Python 3.11+, creates or repairs `.venv`, 
 
 ExifTool is optional. When it is available on `PATH`, the app uses it for broader RAW and video metadata coverage. Files still transfer without ExifTool; unsupported metadata falls back to file modification time and the card identity.
 
-Existing schema-1 through schema-4 configuration files are read by version 0.11.0. Before the application writes a migrated schema-5 file, it saves the original under the adjacent `backups` directory. Schema 5 retains the prior destination as a named default library and adds long-exposure organization settings. Library metadata upgrades separately back up older `library.json` files and atomically replace them. A configuration or library created by a newer, unsupported release is rejected without being rewritten.
+Existing schema-1 through schema-5 configuration files are read by version 0.11.1. Before the application writes a migrated schema-6 file, it saves the original under the adjacent `backups` directory. Schema 5 retains the prior destination as a named default library and adds long-exposure organization settings; schema 6 adds library organization overrides and backup location types. Library metadata upgrades separately back up older `library.json` files and atomically replace them. A configuration or library created by a newer, unsupported release is rejected without being rewritten.
 
 ## First Setup
 
@@ -183,7 +183,7 @@ The queue table can be filtered by all, pending, processed, failed, or conflict 
 `Travel sync` supports two return-home workflows:
 
 - A retained direct source may be a laptop library, UNC path such as `\\FIELD-LAPTOP\Pictures\Travel Library`, or mounted travel drive. Its stable profile ID survives a changed mount path. Catching is always copy-only and the desktop manifest skips files it already handled.
-- The `Shared hubs` tab accepts a removable USB drive, SMB/NAS folder, mounted network drive, or locally synchronized Google Drive/other cloud folder. The app works with the local folder exposed by the operating system; version 0.11.0 does not require or store direct Google API credentials.
+- The `Shared hubs` tab accepts a removable USB drive, SMB/NAS folder, mounted network drive, or locally synchronized Google Drive/other cloud folder. The app works with the local folder exposed by the operating system; version 0.11.1 does not require or store direct Google API credentials.
 
 Each hub profile has exactly one role on a client:
 
@@ -330,7 +330,7 @@ For an installed Linux package, replace `python app.py` with `photo-card-organiz
 ```bash
 photo-card-organizer --scan-once --dry-run
 photo-card-organizer --import-folder /mnt/camera-backup --no-subfolders
-./PhotoCardOrganizer-0.11.0-x86_64.AppImage --print-config
+./PhotoCardOrganizer-0.11.1-x86_64.AppImage --print-config
 ```
 
 Create an identity folder without the GUI:
