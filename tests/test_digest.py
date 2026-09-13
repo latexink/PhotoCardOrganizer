@@ -204,7 +204,8 @@ class DigestWorkflowTests(unittest.TestCase):
         events = []
         monitor = MonitorService(config, events.append)
 
-        imported, errors = monitor._digest_inboxes(config)
+        with patch("photocard.monitor.time.monotonic", return_value=1.0):
+            imported, errors = monitor._digest_inboxes(config)
 
         self.assertEqual(1, imported)
         self.assertEqual([], errors)

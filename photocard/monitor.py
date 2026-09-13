@@ -83,7 +83,8 @@ class MonitorService:
 
     def _send(self, event: ActivityEvent, force: bool = False) -> None:
         now = time.monotonic()
-        if not force and now - self._last_event.get(event.message, 0) < 60:
+        previous = self._last_event.get(event.message)
+        if not force and previous is not None and now - previous < 60:
             return
         self._last_event[event.message] = now
         self._event_callback(event)
@@ -187,7 +188,8 @@ class MonitorService:
                 continue
             hub_id = str(hub["id"])
             interval = max(10.0, float(hub.get("poll_seconds", 60)))
-            if now - self._last_hub_scan.get(hub_id, 0) < interval:
+            previous = self._last_hub_scan.get(hub_id)
+            if previous is not None and now - previous < interval:
                 continue
             self._last_hub_scan[hub_id] = now
             cards, hub_errors = catch_sources(config, hub)
@@ -231,7 +233,8 @@ class MonitorService:
                 continue
             profile_id = str(profile["id"])
             interval = max(10.0, float(profile.get("poll_seconds", 60)))
-            if now - self._last_digest_scan.get(profile_id, 0) < interval:
+            previous = self._last_digest_scan.get(profile_id)
+            if previous is not None and now - previous < interval:
                 continue
             self._last_digest_scan[profile_id] = now
             root = Path(str(profile.get("root", ""))).expanduser()
