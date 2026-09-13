@@ -3,27 +3,27 @@ from __future__ import annotations
 import ctypes
 import os
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QApplication, QStyle
 
 
 COLORS = {
-    "background": "#202020",
-    "surface": "#2b2b2b",
-    "surface_alt": "#323232",
-    "sidebar": "#181818",
-    "border": "#484848",
-    "text": "#f5f5f5",
-    "muted": "#bdbdbd",
-    "accent": "#0f6cbd",
-    "accent_hover": "#1975c5",
-    "accent_pressed": "#0b5a9d",
-    "focus": "#60cdff",
-    "selection": "#29465c",
-    "success": "#36a269",
-    "warning": "#f2c94c",
-    "error": "#ff7b86",
+    "background": "#202224",
+    "surface": "#292c2f",
+    "surface_alt": "#34383b",
+    "sidebar": "#191c1d",
+    "border": "#465055",
+    "text": "#f2f4f5",
+    "muted": "#aab4b6",
+    "accent": "#43b99c",
+    "accent_hover": "#59c9ac",
+    "accent_pressed": "#2f9e83",
+    "focus": "#8fe0cc",
+    "selection": "#294941",
+    "success": "#43b99c",
+    "warning": "#e6b86b",
+    "error": "#e78677",
 }
 
 WINDOWS_APP_USER_MODEL_ID = "PhotoCardOrganizer.Desktop"
@@ -92,17 +92,17 @@ QPushButton, QToolButton {{
     border-radius: 4px;
 }}
 QPushButton:hover, QToolButton:hover {{
-    background: #3a3a3a;
+    background: #3e4548;
 }}
 QPushButton:pressed, QToolButton:pressed {{
-    background: #272727;
+    background: #25292b;
 }}
 QPushButton:focus, QToolButton:focus {{
     border: 1px solid {COLORS['focus']};
 }}
 QPushButton:disabled, QToolButton:disabled {{
     color: #777777;
-    background: #292929;
+    background: #2a2e30;
 }}
 QPushButton[accent="true"] {{
     color: white;
@@ -150,7 +150,7 @@ QComboBox::drop-down {{
     background: transparent;
 }}
 QComboBox::drop-down:hover {{
-    background: #353535;
+    background: #3b4245;
 }}
 QComboBox::down-arrow {{
     image: url(:/qt-project.org/styles/commonstyle/images/arrow-down-16.png);
@@ -217,7 +217,7 @@ QTabBar::tab:selected {{
 }}
 QTabBar::tab:hover:!selected {{
     color: {COLORS['text']};
-    background: #353535;
+    background: #3b4245;
 }}
 QListWidget#navigation {{
     background: {COLORS['sidebar']};
@@ -252,7 +252,7 @@ QListWidget#navigation::item:disabled {{
 }}
 QTableView, QTableWidget, QTreeWidget, QListView {{
     background: {COLORS['surface']};
-    alternate-background-color: #2e2e2e;
+    alternate-background-color: #2f3436;
     border: 1px solid {COLORS['border']};
     border-radius: 4px;
     gridline-color: {COLORS['border']};
@@ -288,7 +288,7 @@ QScrollBar::handle:vertical {{
     background: {COLORS['border']};
     border-radius: 5px;
 }}
-QScrollBar::handle:vertical:hover {{ background: #676767; }}
+QScrollBar::handle:vertical:hover {{ background: #697779; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
     height: 10px;
@@ -391,14 +391,45 @@ def _application_icon_pixmap(size: int) -> QPixmap:
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    path = QPainterPath()
-    margin = size * 0.08
-    path.addRoundedRect(margin, margin, size - 2 * margin, size - 2 * margin, size * 0.16, size * 0.16)
-    painter.fillPath(path, QColor(COLORS["accent"]))
-    painter.setPen(QPen(QColor("white"), max(1, round(size * 0.07)), Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-    painter.drawLine(int(size * 0.28), int(size * 0.25), int(size * 0.28), int(size * 0.75))
-    painter.drawLine(int(size * 0.28), int(size * 0.25), int(size * 0.55), int(size * 0.25))
-    painter.drawArc(int(size * 0.39), int(size * 0.38), int(size * 0.33), int(size * 0.33), 35 * 16, 290 * 16)
+    scale = size / 256
+    card = QPainterPath()
+    card.moveTo(42 * scale, 30 * scale)
+    card.lineTo(184 * scale, 30 * scale)
+    card.lineTo(214 * scale, 60 * scale)
+    card.lineTo(214 * scale, 214 * scale)
+    card.quadTo(214 * scale, 226 * scale, 202 * scale, 226 * scale)
+    card.lineTo(42 * scale, 226 * scale)
+    card.quadTo(30 * scale, 226 * scale, 30 * scale, 214 * scale)
+    card.lineTo(30 * scale, 42 * scale)
+    card.quadTo(30 * scale, 30 * scale, 42 * scale, 30 * scale)
+    card.closeSubpath()
+    painter.fillPath(card, QColor(COLORS["accent"]))
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(COLORS["background"]))
+    for x in (68, 94, 120, 146):
+        painter.drawRoundedRect(int(x * scale), int(48 * scale), int(13 * scale), int(24 * scale), int(4 * scale), int(4 * scale))
+
+    frame = QPainterPath()
+    frame.addRoundedRect(62 * scale, 86 * scale, 140 * scale, 122 * scale, 6 * scale, 6 * scale)
+    painter.fillPath(frame, QColor(COLORS["text"]))
+    painter.setBrush(QColor(COLORS["error"]))
+    painter.drawRect(int(76 * scale), int(99 * scale), int(112 * scale), int(20 * scale))
+    painter.setBrush(QColor(COLORS["surface_alt"]))
+    painter.drawRect(int(76 * scale), int(127 * scale), int(112 * scale), int(66 * scale))
+    painter.setBrush(QColor(COLORS["accent"]))
+    painter.drawPolygon(
+        [
+            QPointF(78 * scale, 184 * scale),
+            QPointF(113 * scale, 145 * scale),
+            QPointF(134 * scale, 166 * scale),
+            QPointF(151 * scale, 151 * scale),
+            QPointF(186 * scale, 184 * scale),
+        ]
+    )
+    painter.setPen(QPen(QColor(COLORS["background"]), max(1, round(size * 0.018))))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(62 * scale, 86 * scale, 140 * scale, 122 * scale, 6 * scale, 6 * scale)
     painter.end()
     return pixmap
 

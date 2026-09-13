@@ -226,6 +226,9 @@ def build_bundle(
     shutil.copy2(
         desktop_png_path, bundle / "PhotoCardOrganizer-256.png"
     )
+    brand_mark = PROJECT_ROOT / "assets" / "photo-card-organizer-mark.svg"
+    if brand_mark.is_file():
+        shutil.copy2(brand_mark, bundle / brand_mark.name)
     if os.name == "nt":
         shutil.copy2(ico_path, bundle / "PhotoCardOrganizer.ico")
     release = {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 - 2026-09-13
+
+- Added the graphite, jade, and muted-coral visual theme, a matching SD-card/photo application mark, and a packaged SVG brand asset.
+
 ## 0.10.1 - 2026-09-13
 
 - Added persistent progress timing with an estimated time remaining and average application read/write rates.

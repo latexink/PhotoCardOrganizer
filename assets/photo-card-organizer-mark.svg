@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Photo Card Organizer mark</title>
+  <desc id="desc">A jade memory card behind a framed photograph with coral and graphite accents.</desc>
+  <path fill="#43B99C" d="M42 30h142l30 30v154c0 7-5 12-12 12H42c-7 0-12-5-12-12V42c0-7 5-12 12-12Z"/>
+  <path fill="#202224" d="M68 48h13v24H68zm26 0h13v24H94zm26 0h13v24h-13zm26 0h13v24h-13z"/>
+  <rect width="140" height="122" x="62" y="86" fill="#F2F4F5" rx="6"/>
+  <path fill="#E78677" d="M76 99h112v20H76z"/>
+  <path fill="#34383B" d="M76 127h112v66H76z"/>
+  <path fill="#43B99C" d="m78 184 35-39 21 21 17-15 35 33H78Z"/>
+  <rect width="140" height="122" x="62" y="86" fill="none" stroke="#202224" stroke-width="5" rx="6"/>
+</svg>

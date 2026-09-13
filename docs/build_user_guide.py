@@ -991,6 +991,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.10.2", "2026-09-13", "Graphite, jade, and coral visual theme, refreshed application mark, and packaged SVG brand asset."],
                 ["0.10.1", "2026-09-13", "Estimated transfer time remaining with average read/write rates and focused progress telemetry tests."],
                 ["0.10.0", "2026-09-08", "Integrity checks, resumable same-filesystem reorganization, lower-I/O verification, and expanded folder levels."],
                 ["0.9.0", "2026-09-07", "Content-based library merge, verified location migration, portable integrity baselines, and dialog lifecycle fixes."],

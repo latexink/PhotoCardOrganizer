@@ -895,6 +895,14 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertIn((256, 256), sizes)
         self.assertIn((512, 512), sizes)
 
+    def test_visual_identity_uses_graphite_jade_coral_palette(self) -> None:
+        from photocard.qt_theme import COLORS
+
+        self.assertEqual("#202224", COLORS["background"])
+        self.assertEqual("#43b99c", COLORS["accent"])
+        self.assertEqual("#e78677", COLORS["error"])
+        self.assertIn("#43b99c", self.app.styleSheet())
+
     def test_digest_dialog_keeps_move_manual_and_explains_controls(self) -> None:
         dialog = DigestInboxDialog(
             self.window,
