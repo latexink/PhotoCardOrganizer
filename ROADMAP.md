@@ -81,6 +81,19 @@ every item will ship in the next release.
   behavior.
 - Reject SVG scripts, external resources, and excessive render dimensions.
 
+## Portfolio Preparation
+
+- Add a dedicated Portfolio preparation tab for curating presentation-ready
+  selections from existing libraries, without moving or modifying originals.
+- Save named collections as references to media; support filtering by rating,
+  date, camera, and media type, with manual selection and presentation order.
+- Reuse export and watermark presets for destination, sizing, format, quality,
+  and metadata privacy, rather than duplicating export settings.
+- Preview the selection and export summary before creating derivatives. Handle
+  unavailable originals and destination conflicts explicitly without overwrites.
+- Keep portfolio preparation separate from library organization; website
+  publishing and hosting are not part of the initial scope.
+
 ## Card Onboarding Clarity
 
 - Label the card or drive root as the current Windows drive letter or Linux

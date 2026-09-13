@@ -29,6 +29,7 @@ from .models import (
     MediaMetadata,
 )
 from .portable_log import PortableTransferHistory, PortableTransferSession
+from .progress import TransferTiming
 from .templates import render_filename, render_folder, safe_segment
 from .transfer_hub import effective_replica_destinations
 
@@ -70,6 +71,7 @@ class Organizer:
         self.manifest = ImportManifest(self.destination_root, create=not dry_run)
         self.geocoder = ReverseGeocoder(config, self.manifest)
         self.event_callback = event_callback
+        self._transfer_timing = None
         self.decision_callback = decision_callback
         self._decision_overrides: dict[str, DecisionResult] = {}
         self.replica_destinations = []
@@ -88,6 +90,10 @@ class Organizer:
         self._extension_map = self._build_extension_map()
 
     def _emit(self, level: str, message: str, **details: object) -> None:
+        if level == "progress" and self._transfer_timing is not None and not details.get("stage"):
+            details.update(self._transfer_timing.details(
+                int(details.get("current", 0)), int(details.get("total", 0))
+            ))
         if self.event_callback:
             self.event_callback(ActivityEvent(level, message, details=details))
 
@@ -453,12 +459,17 @@ class Organizer:
         try:
             verify_snapshot()
             content_hash = self._copy_payload(source, temporary, verification)
+            if self._transfer_timing is not None:
+                self._transfer_timing.read_bytes += snapshot.st_size
+                self._transfer_timing.written_bytes += snapshot.st_size
             verify_snapshot()
             if snapshot.st_size != temporary.stat().st_size:
                 raise OSError("Copied size does not match the source.")
             if verification != "size":
                 if content_hash != self._hash_file(temporary, verification):
                     raise OSError(f"{verification.upper()} verification failed.")
+                if self._transfer_timing is not None:
+                    self._transfer_timing.read_bytes += snapshot.st_size
             verify_snapshot()
             mode = temporary.stat().st_mode
             if not mode & stat.S_IWRITE:
@@ -1060,6 +1071,7 @@ class Organizer:
             return self._scan_card(card, allow_destructive=allow_destructive)
 
     def _scan_card(self, card: CardMarker, *, allow_destructive: bool = False) -> ImportStats:
+        self._transfer_timing = None
         stats = ImportStats(card_id=card.card_id, card_name=card.name, action=card.action)
         output_roots = [("primary destination", self.destination_root)]
         output_roots.extend(
@@ -1267,6 +1279,7 @@ class Organizer:
                 )
         progress_interval = max(1, total_files // 200)
         processed_files = 0
+        self._transfer_timing = TransferTiming()
         self._emit(
             "progress",
             f"Scanning {card.name}: 0 of {total_files}",

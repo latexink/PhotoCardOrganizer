@@ -89,6 +89,7 @@ from .library_state import (
 from .models import ActivityEvent, CardMarker, DecisionRequest, DecisionResult, ImportStats
 from .monitor import MonitorService
 from .organizer import MAX_DESTINATION_REDIRECTS, Organizer
+from .progress import timing_text
 from .reorganization import ReorganizationOrganizer
 from .qt_library_tools import LazyTableModel, LibraryJobDialog, ReorganizationDialog
 from .qt_integrity import IntegrityPanel
@@ -492,6 +493,11 @@ class PhotoCardApp(QMainWindow):
         self.progress_label.setMinimumWidth(120)
         self.progress_label.setMaximumWidth(420)
         self.progress_label.setWordWrap(True)
+        self.progress_label.setToolTip(
+            "ETA estimates the current source from completed files. Rates are "
+            "average application payload I/O, including copy verification reads, "
+            "not physical disk speed. Large files and filesystem caching affect estimates."
+        )
         layout.addWidget(self.progress_label)
         self.transfer_progress = QProgressBar()
         self.transfer_progress.setObjectName("persistentProgress")
@@ -7283,7 +7289,10 @@ class PhotoCardApp(QMainWindow):
                     current = max(0, min(total, raw_current))
                     self.transfer_progress.setRange(0, total)
                     self.transfer_progress.setValue(current)
-                    self.progress_label.setText(event.message)
+                    timing = timing_text(event.details)
+                    self.progress_label.setText(
+                        f"{event.message}\n{timing}" if timing else event.message
+                    )
                     self.status_label.setText(event.message)
                     continue
                 self.activity_table.insertRow(0)

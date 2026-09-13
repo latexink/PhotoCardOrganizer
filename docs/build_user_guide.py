@@ -991,6 +991,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.10.1", "2026-09-13", "Estimated transfer time remaining with average read/write rates and focused progress telemetry tests."],
                 ["0.10.0", "2026-09-08", "Integrity checks, resumable same-filesystem reorganization, lower-I/O verification, and expanded folder levels."],
                 ["0.9.0", "2026-09-07", "Content-based library merge, verified location migration, portable integrity baselines, and dialog lifecycle fixes."],
                 ["0.8.0", "2026-09-06", "In-place library reorganization, filtered named-library exports, and reduced scanning overhead."],

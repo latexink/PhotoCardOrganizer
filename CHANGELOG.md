@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 - 2026-09-13
+
+- Added persistent progress timing with an estimated time remaining and average application read/write rates.
+- Kept timing based on completed transfer payloads, including destination verification reads, without adding filesystem polling or extra media reads.
+- Added regression coverage for progress formatting, copy accounting, and UI event timing details.
+
 ## 0.10.0 - 2026-09-08
 
 - Added a dedicated Integrity screen for full-library or selected-file checksum checks, missing-baseline creation, cancellation, immutable baseline results, and matching portable/local reports. Legacy catalogs migrate into `.photocard-organizer/integrity` while retaining the original catalog as a rollback copy.
