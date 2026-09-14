@@ -1,0 +1,24 @@
+<Configuration>
+  <VGpu>Disable</VGpu>
+  <Networking>Disable</Networking>
+  <MappedFolders>
+    <MappedFolder>
+      <HostFolder>C:\Users\vroom\Documents\Codex\2026-07-12\i\work\PhotoCardOrganizer-ui\artifacts\windows</HostFolder>
+      <SandboxFolder>C:\PhotoCardAssets</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\Users\vroom\Documents\Codex\2026-07-12\i\work\PhotoCardOrganizer-ui\packaging\windows\sandbox</HostFolder>
+      <SandboxFolder>C:\PhotoCardScripts</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>C:\Users\vroom\Documents\Codex\2026-07-12\i\work\PhotoCardOrganizer-ui\build\windows</HostFolder>
+      <SandboxFolder>C:\PhotoCardResults</SandboxFolder>
+      <ReadOnly>false</ReadOnly>
+    </MappedFolder>
+  </MappedFolders>
+  <LogonCommand>
+    <Command>powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\PhotoCardScripts\Test-Release.ps1</Command>
+  </LogonCommand>
+</Configuration>

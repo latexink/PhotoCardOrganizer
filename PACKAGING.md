@@ -77,4 +77,6 @@ Before publishing a release:
 6. Run the same Installer file or Start Menu uninstall shortcut, preserve user data, reinstall, and verify settings return.
 7. Test the optional data-removal choice only with an isolated test account or disposable configuration.
 
+The repository includes `packaging/windows/sandbox/PhotoCardOrganizer-0.11.1-Release-Test.wsb` for repeatable Windows Sandbox lifecycle checks. It maps only release assets and scripts into the sandbox, creates a sandbox-only user-data marker, runs install, upgrade, repair, packaged GUI, and uninstall checks, then writes JSON reports under `build/windows` on the host.
+
 Never perform release verification with move enabled against the only copy of media.
