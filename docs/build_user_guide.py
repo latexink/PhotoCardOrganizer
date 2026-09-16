@@ -995,6 +995,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.11.2", "2026-09-16", "On-demand library sizes, drive capacity visibility, and optional SHA-256 migration verification."],
                 ["0.11.1", "2026-09-13", "Atomic catalog startup, immediate first monitoring scans, and Linux CI corrections."],
                 ["0.11.0", "2026-09-13", "Verified backup recovery, library-specific naming rules, removable backup safeguards, Integrity action fixes, and schema-6 settings migration."],
                 ["0.10.2", "2026-09-13", "Graphite, jade, and coral visual theme, refreshed application mark, and packaged SVG brand asset."],

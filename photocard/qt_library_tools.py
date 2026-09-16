@@ -271,6 +271,12 @@ class LibraryJobDialog(QDialog):
         label = QLabel(f"Source: {', '.join(str(p) for p in sources)}\nDestination: {migration_target or config['destination_root']}")
         label.setWordWrap(True)
         layout.addWidget(label)
+        self.migration_checksum = QCheckBox("Verify migrated files with SHA-256")
+        self.migration_checksum.setChecked(True)
+        self.migration_checksum.setVisible(mode == "migrate")
+        self.migration_checksum.setToolTip("Recommended for removable drives, network destinations, and archival transfers. Disable for faster size-only verification; originals are still retained. Existing checksum baselines are preserved.")
+        self.migration_checksum.toggled.connect(self._invalidate_preview)
+        layout.addWidget(self.migration_checksum)
         self.table = QTableView()
         self.model = LazyTableModel(("SOURCE", "DESTINATION", "ACTION", "CHECKSUM"), parent=self)
         self.table.setModel(self.model)
@@ -307,10 +313,17 @@ class LibraryJobDialog(QDialog):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
 
+    def _invalidate_preview(self):
+        self.plan = None
+        self.process.setEnabled(False)
+        self.status.setText("Verification changed; generate a new preview.")
+
     def start_preview(self):
         if self._running:
             return
         self._running = True
+        self.migration_checksum.setEnabled(False)
+        migration_checksum = self.migration_checksum.isChecked()
         self.plan = None
         self.model.replace_rows([])
         self.preview.setEnabled(False)
@@ -327,6 +340,7 @@ class LibraryJobDialog(QDialog):
                     self.config, self.sources, mode=self.mode,
                     backup_root=self.backup_root, migration_target=self.migration_target,
                     cancel_event=self._cancel,
+                    migration_checksum=migration_checksum,
                     progress=lambda current, total, name: setattr(self, "_progress", (current, total, name)),
                 )
             except Exception as exc:
@@ -342,10 +356,11 @@ class LibraryJobDialog(QDialog):
             current, total, name = getattr(self, "_progress", (0, 0, ""))
             self.progress.setRange(0, total)
             self.progress.setValue(current)
-            self.status.setText(f"{'Processing' if self._processing else 'Hashing files'}: {current} / {total} | {name}")
+            self.status.setText(f"{'Processing' if self._processing else 'Planning'}: {current} / {total} | {name}")
             return
         self.timer.stop()
         self._running = False
+        self.migration_checksum.setEnabled(True)
         self.progress.hide()
         self.preview.setEnabled(True)
         if self._closing:
@@ -357,7 +372,7 @@ class LibraryJobDialog(QDialog):
                 self.status.setText(f"Completed with an error: {self._result['error']}")
                 self.process.setEnabled(True)
                 return
-            self.status.setText("Operation completed and checksum records were saved.")
+            self.status.setText("Operation completed and transfer records were saved.")
             super().accept()
             return
         if self._result.get("error"):
@@ -369,7 +384,7 @@ class LibraryJobDialog(QDialog):
             roots.append(entry.root)
             root = next((p for p in roots if p in entry.source.parents), entry.source.parent)
             return str(entry.source.relative_to(root))
-        self.model.values = lambda entry: (source_label(entry), str(entry.destination.relative_to(entry.root)), entry.action, entry.digest[:16] + "...")
+        self.model.values = lambda entry: (source_label(entry), str(entry.destination.relative_to(entry.root)), entry.action, entry.digest[:16] + "..." if entry.digest else "During transfer" if self.mode != "migrate" or self.plan.migration_checksum else "Size only")
         self.model.tooltips = lambda entry: (str(entry.source), str(entry.destination), entry.action, entry.digest)
         self.model.replace_rows(self.plan.entries)
         self.status.setText(f"{len(self.plan.entries)} files | {self.plan.changes} changes | preview complete")
@@ -378,11 +393,13 @@ class LibraryJobDialog(QDialog):
     def confirm_process(self):
         if self.plan is None or self._running:
             return
-        answer = QMessageBox.warning(self, "Confirm library operation", f"This will process {self.plan.changes} planned changes and record SHA-256 checksums. Existing source files are retained unless this is an explicit reorganization. Continue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        verification = "size only (does not detect same-size corruption)" if self.mode == "migrate" and not self.plan.migration_checksum else "SHA-256"
+        answer = QMessageBox.warning(self, "Confirm library operation", f"This will process {self.plan.changes} planned changes. Verification: {verification}. Existing source files are retained unless this is an explicit reorganization. Continue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
         self._done.clear()
         self._processing = True
+        self.migration_checksum.setEnabled(False)
         self._running = True
         self._cancel.clear()
         self._result = {}

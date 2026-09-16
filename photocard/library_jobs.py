@@ -86,6 +86,7 @@ class LibraryJobPlan:
     id: str = field(default_factory=lambda: uuid.uuid4().hex)
     migration_target: Path | None = None
     backup_root: Path | None = None
+    migration_checksum: bool = True
 
     @property
     def changes(self):
@@ -102,7 +103,7 @@ def stable_digest(path):
 
 def build_library_job(config, sources, *, mode="merge", backup_root=None,
                       reorganize_existing=False, migration_target=None,
-                      cancel_event=None, progress=None):
+                      cancel_event=None, progress=None, migration_checksum=True):
     candidate = copy.deepcopy(config)
     primary = checked_path(Path(candidate["destination_root"]))
     roots = list(dict.fromkeys(checked_path(Path(p)) for p in sources))
@@ -247,7 +248,8 @@ def build_library_job(config, sources, *, mode="merge", backup_root=None,
                       capacity.total * candidate["safety"]["minimum_destination_free_percent"] / 100)
         if capacity.free - size < reserve:
             raise ValueError(f"Insufficient space including the configured reserve on {ancestor}")
-    return LibraryJobPlan(candidate, entries, mode, roots, migration_target=target, backup_root=backup)
+    return LibraryJobPlan(candidate, entries, mode, roots, migration_target=target, backup_root=backup,
+                          migration_checksum=migration_checksum)
 
 
 def append_record(paths, record):
@@ -296,8 +298,9 @@ def execute_library_job(plan, *, cancel_event=None, progress=None, local_root=No
             enough, reason, _ = engine._destination_space_status(entry.root, entry.snapshot.st_size)
             if not enough:
                 raise OSError(reason)
-            actual = engine._copy_and_verify(entry.source, entry.destination, "sha256", expected_stat=entry.snapshot)
-            if entry.digest and actual != entry.digest:
+            verification = "size" if plan.mode == "migrate" and not plan.migration_checksum and not entry.backup else "sha256"
+            actual = engine._copy_and_verify(entry.source, entry.destination, verification, expected_stat=entry.snapshot)
+            if actual and entry.digest and actual != entry.digest:
                 raise SourceChangedError(f"Source content differs from preview: {entry.source}")
             entry = replace(entry, digest=actual)
         verified_stats[entry.destination] = entry.destination.stat()
@@ -322,7 +325,8 @@ def execute_library_job(plan, *, cancel_event=None, progress=None, local_root=No
                 engine._copy_and_verify(entry.destination, entry.backup, "sha256")
             IntegrityCatalog(backup_root, local_root).record(entry.backup, entry.digest, "sha256", verified=True)
         event = dict(session=plan.id, source=str(entry.source), destination=str(entry.destination),
-                     backup=str(entry.backup) if entry.backup else "", sha256=entry.digest, action=entry.action)
+                     backup=str(entry.backup) if entry.backup else "", sha256=entry.digest, action=entry.action,
+                     verification="sha256" if entry.digest else "size")
         logs = [local_root / "library-jobs" / f"{plan.id}.jsonl"]
         if plan.mode != "migrate":
             logs.append(entry.root / ".photocard-organizer" / "library-jobs" / f"{plan.id}.jsonl")
@@ -352,7 +356,8 @@ def execute_library_job(plan, *, cancel_event=None, progress=None, local_root=No
                 raise SourceChangedError("Migration source or destination changed; original location remains active")
         relocate_migrated_index(plan.source_roots[0], plan.migration_target)
         append_record([plan.migration_target / ".photocard-organizer" / "library-jobs" / f"{plan.id}.jsonl"],
-                      dict(session=plan.id, action="migration verified", source=str(plan.source_roots[0]), destination=str(plan.migration_target)))
+                      dict(session=plan.id, action="migration verified", source=str(plan.source_roots[0]), destination=str(plan.migration_target),
+                           verification="sha256" if plan.migration_checksum or plan.backup_root else "size"))
     return records
 
 

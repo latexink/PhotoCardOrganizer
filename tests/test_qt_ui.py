@@ -47,6 +47,23 @@ from photocard.structure_detection import detect_existing_structure
 
 
 class QtWorkflowTests(unittest.TestCase):
+    def test_library_size_columns_and_refresh(self):
+        table = self.window.library_table
+        self.assertEqual([table.horizontalHeaderItem(i).text() for i in (3, 4, 5)],
+                         ["FREE", "LIBRARY SIZE", "DRIVE TOTAL"])
+        self.window._library_size_result = (self.window.config["destination_root"], "123 B")
+        self.window._poll_library_size()
+        self.assertIn("123 B", self.window._library_sizes.values())
+
+    def test_migration_verification_change_invalidates_preview(self):
+        dialog = LibraryJobDialog(self.window, self.window.config, [], mode="migrate")
+        dialog.plan = object()
+        dialog.process.setEnabled(True)
+        dialog.migration_checksum.setChecked(False)
+        self.assertIsNone(dialog.plan)
+        self.assertFalse(dialog.process.isEnabled())
+        dialog.deleteLater()
+
     def test_library_organization_dialog_retains_custom_fields(self):
         from photocard.qt_dialogs import LibraryOrganizationDialog
         overrides = {"video": {"folder_segments": ["Client clips", "{date:%Y}"], "filename_template": "clip_{original}"}}

@@ -86,6 +86,7 @@ from .library_state import (
     metadata_path as library_metadata_path,
     upgrade_library_metadata,
 )
+from .library_size import library_size
 from .models import ActivityEvent, CardMarker, DecisionRequest, DecisionResult, ImportStats
 from .monitor import MonitorService
 from .organizer import MAX_DESTINATION_REDIRECTS, Organizer
@@ -911,16 +912,26 @@ class PhotoCardApp(QMainWindow):
         self.integrity_library_button.setToolTip("Check files against saved checksums in the Integrity section.")
         self.integrity_library_button.clicked.connect(self._open_integrity)
         library_tools.addWidget(self.integrity_library_button)
+        self.library_size_button = QPushButton("Refresh library size")
+        self.library_size_button.setToolTip("Measure the selected library in the background, including metadata and conflicts. Links are excluded. Results are cached until refreshed; media contents are not read.")
+        self.library_size_button.clicked.connect(self._measure_library_size)
+        library_tools.addWidget(self.library_size_button)
+        self._library_sizes = {}
+        self._library_size_result = None
+        self._library_size_timer = QTimer(self)
+        self._library_size_timer.timeout.connect(self._poll_library_size)
         library_tools.addStretch(1)
         layout.addLayout(library_tools)
 
-        self.library_table = QTableWidget(0, 6)
+        self.library_table = QTableWidget(0, 8)
         self.library_table.setHorizontalHeaderLabels(
             (
                 "LIBRARY",
                 "TYPE",
                 "STATE",
                 "FREE",
+                "LIBRARY SIZE",
+                "DRIVE TOTAL",
                 "FOLDER",
                 "DEFAULT",
             )
@@ -938,13 +949,13 @@ class PhotoCardApp(QMainWindow):
         self.library_table.verticalHeader().setVisible(False)
         self.library_table.verticalHeader().setDefaultSectionSize(32)
         header = self.library_table.horizontalHeader()
-        for column in (0, 1, 2, 3, 5):
+        for column in (0, 1, 2, 3, 4, 5, 7):
             header.setSectionResizeMode(
                 column,
                 QHeaderView.ResizeMode.ResizeToContents,
             )
         header.setSectionResizeMode(
-            4,
+            6,
             QHeaderView.ResizeMode.Stretch,
         )
         self.library_table.itemSelectionChanged.connect(
@@ -5961,6 +5972,35 @@ class PhotoCardApp(QMainWindow):
             None,
         )
 
+    def _measure_library_size(self) -> None:
+        selected = self._selected_library_destination()
+        if not selected or not selected.get("root") or self._library_size_timer.isActive():
+            return
+        root = str(selected["root"])
+        self.library_size_button.setEnabled(False)
+        self.library_size_button.setText("Measuring...")
+        self._library_size_result = None
+
+        def work():
+            try:
+                value = format_bytes(library_size(Path(root).expanduser()))
+            except OSError:
+                value = "Unavailable"
+            self._library_size_result = (root, value)
+
+        threading.Thread(target=work, name="library-size", daemon=True).start()
+        self._library_size_timer.start(100)
+
+    def _poll_library_size(self) -> None:
+        if self._library_size_result is None:
+            return
+        root, value = self._library_size_result
+        self._library_sizes[root] = value
+        self._library_size_timer.stop()
+        self.library_size_button.setEnabled(True)
+        self.library_size_button.setText("Refresh library size")
+        self._refresh_library_destinations()
+
     def _refresh_library_destinations(self) -> None:
         if not hasattr(self, "library_table"):
             return
@@ -5993,12 +6033,14 @@ class PhotoCardApp(QMainWindow):
             else:
                 state = library_metadata_status(root)
             try:
+                capacity = capacity_for(Path(root)) if online else None
                 free = (
-                    format_bytes(capacity_for(Path(root)).free_bytes)
+                    format_bytes(capacity.free_bytes)
                     if online
                     else "—"
                 )
             except OSError:
+                capacity = None
                 free = "Unavailable"
             values = (
                 str(library.get("name", "Library")),
@@ -6008,6 +6050,8 @@ class PhotoCardApp(QMainWindow):
                 ),
                 state,
                 free,
+                self._library_sizes.get(root, "Not measured"),
+                format_bytes(capacity.total_bytes) if capacity else "Unavailable",
                 root or "Not configured",
                 (
                     "Default"
@@ -6023,6 +6067,8 @@ class PhotoCardApp(QMainWindow):
                         library_id,
                     )
                 item.setToolTip(value)
+                if column == 4:
+                    item.setToolTip("Cached logical size of all library files, including metadata and conflicts; excludes links. Use Refresh library size to update. This is not allocated disk space.")
                 self.library_table.setItem(row, column, item)
             if (
                 library_id == selected_id

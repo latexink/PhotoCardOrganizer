@@ -10,6 +10,18 @@ from photocard.manifest import ImportManifest
 
 
 class LibraryJobsTests(unittest.TestCase):
+    def test_size_only_migration_preserves_source_without_hashing(self):
+        source = self.source_a / "photo.jpg"
+        source.write_bytes(b"synthetic media")
+        target = self.root / "size-only"
+        plan = build_library_job(self.config, [self.source_a], mode="migrate",
+                                 migration_target=target, migration_checksum=False)
+        with patch("photocard.library_jobs.checksum", side_effect=AssertionError("Unexpected hash")), patch("photocard.organizer.Organizer._hash_file", side_effect=AssertionError("Unexpected hash")):
+            records = execute_library_job(plan, local_root=self.root / "local")
+        self.assertEqual(source.read_bytes(), (target / source.name).read_bytes())
+        self.assertEqual(records[0]["sha256"], "")
+        self.assertEqual(records[0]["verification"], "size")
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

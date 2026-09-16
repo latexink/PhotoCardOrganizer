@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 - 2026-09-16
+
+- Added cached, on-demand library size and drive total columns beside free space in Libraries. Measuring a library reads directory metadata in the background without reading media contents or repeatedly waking idle drives.
+- Made the existing Migrate library action clearer and added a per-operation SHA-256 verification choice. Size-only migration is faster, records its verification mode, and retains the original library; SHA-256 remains the default for removable, network, and archival destinations.
+- Added focused coverage for library sizing, migration verification selection, transfer records, and the updated Libraries layout.
+
 ## 0.11.1 - 2026-09-13
 
 - Made new library catalog initialization atomic so digest status queries cannot observe a partially created database.
