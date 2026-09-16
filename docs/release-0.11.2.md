@@ -11,7 +11,7 @@ Testing prerelease for Windows, with Linux source support.
 
 ## Verified
 
-- The Windows suite passed 211 tests with one expected symlink-privilege skip.
+- The Windows suite ran 211 tests: 210 passed and one expected symlink-privilege check was skipped.
 - The packaged GUI startup check passed all 14 pages on Qt 6.11.2, and the 24-page PDF guide rendered cleanly.
 - Microsoft Defender custom scans found no threats in the installer or packaged application bundle.
 

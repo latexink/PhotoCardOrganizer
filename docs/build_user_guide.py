@@ -610,6 +610,7 @@ def build_story() -> list:
     story += [
         p("Named library destinations", "h2"),
         p("Libraries retains multiple primary destinations and one default. Set up library creates or connects a destination; connecting an existing folder does not scan, import, or move media. A destination may be local, removable, or a network folder already mounted and authenticated by the operating system. Each library keeps versioned identity, migration state, manifests, and session records under its own .photocard-organizer folder. Initialize, check, upgrade, or repair metadata requires a separate confirmation and never changes media files."),
+        p("The Libraries table shows free space and total drive capacity. Select a library and use <b>Refresh library size</b> to measure its logical file total in the background. The cached result includes metadata and conflicts, excludes links, and can differ from allocated disk space. Refresh after imports or reorganization when you need an updated total; the app does not repeatedly scan idle libraries."),
         p("Camera make and model are extracted automatically from EXIF when available. ExifTool is preferred when installed; Pillow and ExifRead provide additional fallbacks. The Camera folder token resolves in this order:"),
         Workflow(["Card camera override", "EXIF model", "EXIF make", "Card display name"]),
         callout(
@@ -634,6 +635,7 @@ def build_story() -> list:
             ],
             [1.75 * inch, 5.3 * inch],
         ),
+        PageBreak(),
         p("Detailed folder tokens", "h2"),
         data_table(
             ["Token", "Example", "Source"],
@@ -699,6 +701,7 @@ def build_story() -> list:
         p("Confirm and process copies unique files, verifies SHA-256, and saves portable integrity baselines plus local session records. Baseline mismatches are reported without replacing the old checksum. Cancel waits for the current file before releasing the library back to monitoring."),
         p("Migrate library", "h2"),
         p("Select the library and choose <b>Migrate library</b>, then choose an empty destination folder. Close other clients using either location. Preview includes media, library identity, transfer history and index files. After verified copying, the destination index paths are updated and the saved library location changes. The default library selection is preserved."),
+        p("<b>Verify migrated files with SHA-256</b> is enabled by default and is recommended for removable drives, network destinations, and archival transfers. Disable it for faster size-only verification when you will retain the original library. Size checks detect truncation but cannot detect same-size corruption. Existing checksum baselines are preserved, and transfer records identify the verification mode. Changing this option requires a new preview before processing."),
         callout("Originals remain available", "Migration retains the original library. Inspect the destination before any manual cleanup. On an interrupted migration, the original location remains active. Retry within the open dialog after resolving the error; after restarting, select a new empty destination and retain the partial copy until reviewed.", "warn"),
         p("Scope of this preview", "h2"),
         p("Merge and migration are dedicated Libraries actions. They do not yet replace the older Import or merge wizard. Multi-source consolidation with a clone selector, media-routing controls for general imports, automatic repair, and scheduled integrity checks remain planned. Integrity catalogs detect changes; recovery requires an independent good copy."),
