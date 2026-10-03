@@ -7,6 +7,9 @@
 #ifndef OutputDir
   #error OutputDir must be supplied by the build script.
 #endif
+#ifndef NumericAppVersion
+  #define NumericAppVersion AppVersion
+#endif
 
 #define AppName "Photo Card Organizer"
 #define AppExe "PhotoCardOrganizer.exe"
@@ -48,8 +51,10 @@ UsePreviousTasks=yes
 UninstallLogMode=append
 SignedUninstaller=no
 SetupLogging=yes
-VersionInfoVersion={#AppVersion}
-VersionInfoProductVersion={#AppVersion}
+VersionInfoVersion={#NumericAppVersion}
+VersionInfoProductVersion={#NumericAppVersion}
+VersionInfoTextVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
 VersionInfoDescription=Photo Card Organizer Installer and Uninstaller
 
 [Languages]

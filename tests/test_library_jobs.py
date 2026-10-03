@@ -7,6 +7,7 @@ from photocard.config import normalize_config
 from photocard.integrity import IntegrityCatalog, checksum
 from photocard.library_jobs import build_library_job, execute_library_job
 from photocard.manifest import ImportManifest
+from photocard.organizer import Organizer
 
 
 class LibraryJobsTests(unittest.TestCase):
@@ -15,7 +16,7 @@ class LibraryJobsTests(unittest.TestCase):
         source.write_bytes(b"synthetic media")
         target = self.root / "size-only"
         plan = build_library_job(self.config, [self.source_a], mode="migrate",
-                                 migration_target=target, migration_checksum=False)
+                                 migration_target=target, migration_checksum=False, keep_originals=True)
         with patch("photocard.library_jobs.checksum", side_effect=AssertionError("Unexpected hash")), patch("photocard.organizer.Organizer._hash_file", side_effect=AssertionError("Unexpected hash")):
             records = execute_library_job(plan, local_root=self.root / "local")
         self.assertEqual(source.read_bytes(), (target / source.name).read_bytes())
@@ -38,16 +39,20 @@ class LibraryJobsTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_merge_deduplicates_content_across_different_names(self):
+    def test_merge_does_not_read_or_deduplicate_nonconflicting_names(self):
         (self.source_a / "IMG_0001.JPG").write_bytes(b"same")
         (self.source_b / "IMG_9999.JPG").write_bytes(b"same")
-        plan = build_library_job(self.config, [self.source_a, self.source_b], backup_root=self.backup)
-        self.assertEqual([entry.action for entry in plan.entries], ["Copy", "Duplicate"])
-        execute_library_job(plan, local_root=self.root / "local")
+        with patch("photocard.library_jobs.checksum", side_effect=AssertionError("No full-library hashing")), patch.object(
+            Organizer,
+            "_hash_file", side_effect=AssertionError("No nonconflict hashing")
+        ):
+            plan = build_library_job(self.config, [self.source_a, self.source_b], backup_root=self.backup)
+            self.assertEqual([entry.action for entry in plan.entries], ["Copy", "Copy"])
+            execute_library_job(plan, local_root=self.root / "local")
         files = [path for path in self.library.rglob("*") if path.is_file() and path.suffix.lower() == ".jpg"]
-        self.assertEqual(len(files), 1)
+        self.assertEqual(len(files), 2)
         backups = [path for path in self.backup.rglob("*") if path.is_file() and path.suffix.lower() == ".jpg"]
-        self.assertEqual(len(backups), 1)
+        self.assertEqual(len(backups), 2)
         self.assertEqual(backups[0].read_bytes(), files[0].read_bytes())
 
     def test_different_content_same_target_goes_to_conflict_review(self):
@@ -59,7 +64,7 @@ class LibraryJobsTests(unittest.TestCase):
         execute_library_job(plan, local_root=self.root / "local")
         self.assertEqual({entry.destination.read_bytes() for entry in plan.entries}, {b"one", b"two"})
         repeat = build_library_job(self.config, [self.source_a, self.source_b])
-        self.assertTrue(all(entry.action in {"Keep", "Duplicate"} for entry in repeat.entries))
+        self.assertTrue(all(entry.action == "Keep" for entry in repeat.entries))
 
     def test_integrity_baseline_detects_changed_content_without_replacing_it(self):
         path = self.library / "file.jpg"
@@ -75,7 +80,7 @@ class LibraryJobsTests(unittest.TestCase):
     def test_migration_retains_source_until_explicit_cleanup(self):
         (self.source_a / "old.jpg").write_bytes(b"data")
         target = self.root / "migrated"
-        plan = build_library_job(self.config, [self.source_a], mode="migrate", migration_target=target)
+        plan = build_library_job(self.config, [self.source_a], mode="migrate", migration_target=target, keep_originals=True)
         execute_library_job(plan, local_root=self.root / "local")
         self.assertTrue((self.source_a / "old.jpg").exists())
         self.assertTrue((target / "old.jpg").exists())
@@ -86,7 +91,7 @@ class LibraryJobsTests(unittest.TestCase):
         manifest = ImportManifest(self.source_a)
         manifest.record("key", "card", "old.jpg", 4, media.stat().st_mtime_ns, media, "copy", "sha256")
         target = self.root / "migrated"
-        plan = build_library_job(self.config, [self.source_a], mode="migrate", migration_target=target)
+        plan = build_library_job(self.config, [self.source_a], mode="migrate", migration_target=target, keep_originals=True)
         execute_library_job(plan, local_root=str(self.root / "local"))
         import sqlite3
         from contextlib import closing
@@ -102,10 +107,11 @@ class LibraryJobsTests(unittest.TestCase):
         destination = plan.entries[0].destination
         destination.parent.mkdir(parents=True)
         destination.write_bytes(b"external")
-        with self.assertRaises(ValueError):
-            execute_library_job(plan, local_root=self.root / "local")
+        execute_library_job(plan, local_root=self.root / "local")
         self.assertEqual(source.read_bytes(), b"original")
         self.assertEqual(destination.read_bytes(), b"external")
+        self.assertIn("Conflicts", plan.entries[0].destination.parts)
+        self.assertEqual(ImportManifest(self.library).conflict_count(), 1)
 
     def test_failed_clone_keeps_source_and_retry_reuses_primary(self):
         source = self.source_a / "image.jpg"
@@ -114,12 +120,14 @@ class LibraryJobsTests(unittest.TestCase):
         replica = plan.entries[0].backup
         replica.parent.mkdir(parents=True)
         replica.write_bytes(b"external")
-        with self.assertRaises(ValueError):
+        with self.assertRaisesRegex(OSError, "backup conflicts await review"):
             execute_library_job(plan, local_root=self.root / "local")
         self.assertTrue(source.exists())
+        primary_identity = plan.entries[0].destination.stat().st_ino
         replica.unlink()
         execute_library_job(plan, local_root=self.root / "local")
         self.assertEqual(replica.read_bytes(), b"original")
+        self.assertEqual(plan.entries[0].destination.stat().st_ino, primary_identity)
 
     def test_unique_sizes_need_no_checksum_during_preview(self):
         (self.source_a / "first.jpg").write_bytes(b"small")
@@ -129,6 +137,29 @@ class LibraryJobsTests(unittest.TestCase):
         self.assertTrue(all(not entry.digest for entry in plan.entries))
         execute_library_job(plan, local_root=self.root / "local")
         self.assertTrue(all(entry.destination.read_bytes() == entry.source.read_bytes() for entry in plan.entries))
+
+    def test_unresolved_clone_conflict_retries_without_hashing_or_copying(self):
+        source = self.source_a / "image.jpg"
+        source.write_bytes(b"original")
+        plan = build_library_job(self.config, [self.source_a], mode="reorganize", backup_root=self.backup)
+        replica = plan.entries[0].backup
+        replica.parent.mkdir(parents=True)
+        replica.write_bytes(b"modified")
+        with self.assertRaisesRegex(OSError, "backup conflicts await review"):
+            execute_library_job(plan, local_root=self.root / "local")
+        manifest = ImportManifest(self.library)
+        manifest.mark_conflict_reviewed(manifest.conflicts()[0]["id"])
+        with patch.object(Organizer, "_hash_file", side_effect=AssertionError("No repeated checksum reads")), \
+                patch.object(Organizer, "_copy_and_verify", side_effect=AssertionError("No repeated copies")):
+            with self.assertRaisesRegex(OSError, "backup conflicts await review"):
+                execute_library_job(plan, local_root=self.root / "local")
+        self.assertTrue(source.exists())
+        self.assertEqual(manifest.conflict_count(status="all"), 1)
+        replica.rename(replica.with_name("saved-older-version.jpg"))
+        with patch.object(Organizer, "_hash_file", side_effect=AssertionError("No nonconflict checksum reads")):
+            execute_library_job(plan, local_root=self.root / "local")
+        self.assertFalse(source.exists())
+        self.assertEqual(replica.read_bytes(), b"original")
 
 
 if __name__ == "__main__":

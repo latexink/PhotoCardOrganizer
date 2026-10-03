@@ -14,6 +14,7 @@ from photocard.config import normalize_config
 from photocard.qt_theme import configure_application, application_icon
 from photocard.qt_window import PhotoCardApp, PAGE_NAMES
 from photocard.qt_dialogs import LibraryOrganizationDialog
+from photocard.qt_library_tools import LibraryJobDialog, ReorganizationDialog
 
 
 def main():
@@ -50,6 +51,15 @@ def main():
             app.processEvents()
             dialog.grab().save(str(audit / "library-organization.png"))
             dialog.close()
+            for name, dialog in (
+                ("move-library", LibraryJobDialog(window, config, [base / "Photo Library"],
+                    mode="migrate", migration_target=base / "New Library")),
+                ("reorganize-library", ReorganizationDialog(window, config)),
+            ):
+                dialog.show()
+                app.processEvents()
+                dialog.grab().save(str(audit / f"{name}.png"))
+                dialog.close()
         finally:
             window.shutdown()
             window.hide()

@@ -47,6 +47,22 @@ from photocard.structure_detection import detect_existing_structure
 
 
 class QtWorkflowTests(unittest.TestCase):
+    def test_diagnostic_dialog_boundaries_and_model_resets(self):
+        from PySide6.QtCore import QTimer
+        from photocard.qt_library_tools import DiagnosticDialog, LazyTableModel
+        dialog = DiagnosticDialog(self.window)
+        model = LazyTableModel(("Column",), parent=dialog)
+        with self.assertLogs("photocard.qt_library_tools", level="DEBUG") as captured:
+            model.replace_rows([("synthetic",)])
+            QTimer.singleShot(0, dialog.reject)
+            dialog.exec()
+        messages = "\n".join(captured.output)
+        self.assertIn("reset completed; rows=1", messages)
+        self.assertIn("opened", messages)
+        self.assertIn("closed", messages)
+        self.assertNotIn("synthetic", messages)
+        dialog.deleteLater()
+
     def test_library_size_columns_and_refresh(self):
         table = self.window.library_table
         self.assertEqual([table.horizontalHeaderItem(i).text() for i in (3, 4, 5)],
@@ -57,9 +73,22 @@ class QtWorkflowTests(unittest.TestCase):
 
     def test_migration_verification_change_invalidates_preview(self):
         dialog = LibraryJobDialog(self.window, self.window.config, [], mode="migrate")
+        self.assertFalse(dialog.keep_originals.isChecked())
+        self.assertFalse(dialog.migration_checksum.isChecked())
+        dialog.plan = object()
+        dialog.model.replace_rows([("source", "destination", "Copy", "")])
+        dialog.process.setEnabled(True)
+        dialog.migration_checksum.setChecked(True)
+        self.assertIsNone(dialog.plan)
+        self.assertEqual(dialog.model.rowCount(), 0)
+        self.assertFalse(dialog.process.isEnabled())
+        dialog.deleteLater()
+
+    def test_migration_copy_option_invalidates_preview(self):
+        dialog = LibraryJobDialog(self.window, self.window.config, [], mode="migrate")
         dialog.plan = object()
         dialog.process.setEnabled(True)
-        dialog.migration_checksum.setChecked(False)
+        dialog.keep_originals.setChecked(True)
         self.assertIsNone(dialog.plan)
         self.assertFalse(dialog.process.isEnabled())
         dialog.deleteLater()
@@ -82,14 +111,36 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(panel.restore.isEnabled())
         self.assertEqual(panel.model.rows, [])
 
-    def test_whole_library_button_starts_verification_and_clears_filter(self):
+    def test_whole_library_scope_starts_verification_and_clears_filter(self):
         panel = self.window.integrity_panel
         panel.selected_paths = [self.base / "selected.jpg"]
         with patch.object(panel, "start") as start:
-            panel.all_files.click()
+            panel.scope_choice.setCurrentIndex(1)
+            panel.scope_choice.setCurrentIndex(0)
+            panel.verify.click()
         self.assertIsNone(panel.selected_paths)
         self.assertEqual(panel.scope.text(), "Whole library")
         start.assert_called_once_with(False)
+
+    def test_manual_backup_compare_requires_confirmation(self):
+        panel = self.window.integrity_panel
+        backup = self.base / "backup"
+        panel.backup.addItem("Backup", str(backup))
+        panel.backup.setCurrentIndex(panel.backup.count() - 1)
+        with patch.object(panel, "start") as start, patch("photocard.qt_integrity.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
+            panel.compare_selected_backup()
+            start.assert_not_called()
+        with patch.object(panel, "start") as start, patch("photocard.qt_integrity.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes):
+            panel.compare_selected_backup()
+            start.assert_called_once_with(False, backup_root=backup)
+
+    def test_secondary_tabs_route_to_named_pages(self):
+        self.window.show_page("Cards and drives")
+        self.window.area_tabs.setCurrentIndex(1)
+        self.assertEqual(self.window.stack.currentIndex(), self.window.page_indexes["Digest inboxes"])
+        self.assertEqual(self.window.navigation.currentItem().text(), "Sources")
+        self.window.show_page("Conflict review")
+        self.assertEqual(self.window.navigation.currentItem().text(), "Transfers")
 
     def test_reorganization_can_proceed_without_detailed_preview(self):
         root = Path(self.window.config["destination_root"])
@@ -246,16 +297,17 @@ class QtWorkflowTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            len(PAGE_NAMES) + len(NAVIGATION_SECTIONS),
+            len(NAVIGATION_SECTIONS),
             self.window.navigation.count(),
         )
-        self.assertEqual("WORKSPACE", self.window.navigation.item(0).text())
-        self.assertFalse(self.window.navigation.item(0).flags())
+        self.assertEqual("Libraries", self.window.navigation.item(0).text())
+        self.assertTrue(self.window.navigation.item(0).flags())
         self.window.show_page("Library export")
         self.assertEqual(
-            "Library export",
+            "Libraries",
             self.window.navigation.currentItem().data(Qt.ItemDataRole.UserRole),
         )
+        self.assertEqual("Library export", self.window.area_tabs.tabData(self.window.area_tabs.currentIndex()))
         self.assertIn(
             'QPushButton[accent="true"]:disabled',
             self.app.styleSheet(),
@@ -326,6 +378,59 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(bool(self.window.save_button.property("accent")))
         self.assertFalse(self.window._settings_dirty)
         self.assertTrue((self.base / "config.json").is_file())
+
+    def test_diagnostic_setting_is_saved_with_other_preferences(self) -> None:
+        self.window.diagnostics_detailed_check.setChecked(True)
+        self.assertTrue(self.window._settings_dirty)
+        self.window.save_settings()
+
+        self.assertTrue(self.window.config["diagnostics"]["detailed_logging"])
+
+    def test_forget_final_library_pauses_imports_without_deleting_media(self) -> None:
+        self.window.monitor.stop()
+        root = Path(self.window.config["destination_root"])
+        root.mkdir(parents=True, exist_ok=True)
+        media = root / "keep.jpg"
+        media.write_bytes(b"fixture")
+        with patch.object(
+            QMessageBox,
+            "warning",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            self.window._remove_library_destination()
+
+        self.assertEqual([], self.window.config["library_destinations"])
+        self.assertEqual("", self.window.config["default_library_id"])
+        self.assertTrue(media.exists())
+        self.assertTrue((self.base / "config.json").is_file())
+
+    def test_forget_preserves_pending_settings(self):
+        self.window.poll_spin.setValue(37)
+        before = copy.deepcopy(self.window.config)
+        with patch.object(QMessageBox, "information"):
+            self.window._remove_library_destination()
+        self.assertEqual(self.window.config, before)
+        self.assertEqual(self.window.poll_spin.value(), 37)
+        self.assertTrue(self.window._settings_dirty)
+
+    def test_forget_failed_save_keeps_library_selection(self):
+        self.window.monitor.stop()
+        before = copy.deepcopy(self.window.config)
+        with patch.object(QMessageBox, "warning", return_value=QMessageBox.StandardButton.Yes), \
+                patch.object(QMessageBox, "critical"), \
+                patch("photocard.qt_window.save_config", side_effect=OSError("synthetic save failure")):
+            self.window._remove_library_destination()
+        self.assertEqual(self.window.config, before)
+        self.assertEqual(self.window.library_destinations, before["library_destinations"])
+
+    def test_reorganization_starts_with_saved_rules_without_freezing_inheritance(self):
+        dialog = ReorganizationDialog(self.window, self.window.config)
+        self.assertEqual(dialog.preset.currentData(), "Use current detailed rules")
+        self.assertFalse(dialog.save_layout.isChecked())
+        dialog.preset.setCurrentIndex(dialog.preset.findData("Use global organization rules"))
+        self.assertTrue(dialog.save_layout.isChecked())
+        self.assertIn("global", dialog.save_layout.text())
+        dialog.deleteLater()
 
     def test_processing_requires_saved_settings(self) -> None:
         self.window.poll_spin.setValue(
@@ -521,7 +626,7 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertEqual("Export media", self.window.library_export_button.text())
         self.assertEqual("Reorganize library", self.window.reorganize_selected_library_button.text())
         self.assertEqual(
-            "Import or merge",
+            "Add media",
             self.window.import_or_merge_button.text(),
         )
         selected = self.window._selected_library_destination()
@@ -932,6 +1037,37 @@ class QtWorkflowTests(unittest.TestCase):
 
         self.assertLessEqual(page.minimumSizeHint().width(), self.window.stack.width())
         self.assertLessEqual(page.minimumSizeHint().height(), self.window.stack.height())
+
+    def test_backup_review_warns_and_only_changes_review_status(self):
+        from photocard.manifest import ImportManifest
+        root = Path(self.window.config["destination_root"])
+        incoming = root / "Conflicts/Backup conflicts/job/image.jpg"
+        incoming.parent.mkdir(parents=True, exist_ok=True)
+        incoming.write_bytes(b"incoming version")
+        backup = self.base / "backup-image.jpg"
+        backup.write_bytes(b"old version")
+        manifest = ImportManifest(root)
+        manifest.record_conflict(source_key="backup:job:1", card_id="library-backup", source_path=incoming,
+            existing_path=backup, incoming_path=incoming, conflict_type="filename_conflict", resolution="conflict_folder")
+        self.window.resize(980, 660)
+        self.window.show_page("Conflict review")
+        self.window._refresh_conflicts()
+        self.window.conflict_table.selectRow(0)
+        self.app.processEvents()
+        self.assertIn("Backup pending", self.window.conflict_resolution_label.text())
+        self.assertIn("Resume interrupted operation", self.window.conflict_resolution_label.toolTip())
+        page = self.window.stack.currentWidget()
+        self.assertLessEqual(page.minimumSizeHint().width(), self.window.stack.width())
+        with patch("photocard.qt_window.QMessageBox.question", return_value=QMessageBox.StandardButton.No):
+            self.window._mark_conflict_reviewed()
+        self.assertEqual(manifest.conflict_count(), 1)
+        with patch("photocard.qt_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes) as question:
+            self.window._mark_conflict_reviewed()
+        self.assertIn("remain pending", question.call_args.args[2])
+        self.assertEqual(manifest.conflict_count(), 0)
+        self.assertEqual(manifest.conflict_count(status="all"), 1)
+        self.assertEqual(incoming.read_bytes(), b"incoming version")
+        self.assertEqual(backup.read_bytes(), b"old version")
 
     def test_application_icon_contains_taskbar_and_high_resolution_sizes(self) -> None:
         sizes = {(size.width(), size.height()) for size in application_icon().availableSizes()}

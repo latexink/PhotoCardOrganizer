@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (QComboBox, QFileDialog, QFormLayout, QHBoxLayout,
 from .integrity import IntegrityCatalog
 from .integrity_restore import restore_file
 from .qt_library_tools import LazyTableModel
+from .transfer_hub import effective_replica_destinations
 
 
 class IntegrityPanel(QWidget):
@@ -34,9 +35,17 @@ class IntegrityPanel(QWidget):
         self.library.setToolTip("Choose the library whose saved checksums will be checked.")
         self.library.currentIndexChanged.connect(self.clear_selection)
         form.addRow("Library", self.library)
+        self.scope_choice = QComboBox()
+        self.scope_choice.addItems(["Whole library", "Selected files"])
+        self.scope_choice.setToolTip("Check the entire library or only files you select.")
+        self.scope_choice.currentIndexChanged.connect(self.change_scope)
+        form.addRow("Scope", self.scope_choice)
+        self.backup = QComboBox()
+        self.backup.setToolTip("Choose a configured backup for a manual content comparison. A difference does not prove which copy is damaged.")
+        form.addRow("Compare with", self.backup)
         layout.addLayout(form)
         actions = QHBoxLayout()
-        self.verify = QPushButton("Verify library")
+        self.verify = QPushButton("Check saved checksums")
         self.verify.setProperty("accent", True)
         self.verify.setToolTip("Read each file once and compare it with its saved checksum. Missing checksums are reported, not silently created.")
         self.verify.clicked.connect(lambda: self.start(False))
@@ -46,7 +55,10 @@ class IntegrityPanel(QWidget):
         self.choose = QPushButton("Select files")
         self.choose.setToolTip("Limit the next check to selected media inside this library.")
         self.choose.clicked.connect(self.choose_files)
-        for button in (self.verify, self.create, self.choose):
+        self.compare = QPushButton("Compare with backup")
+        self.compare.setToolTip("Read matching paths in the library and selected backup once. Report differences without changing either copy.")
+        self.compare.clicked.connect(self.compare_selected_backup)
+        for button in (self.verify, self.create, self.compare, self.choose):
             actions.addWidget(button)
         actions.addStretch(1)
         layout.addLayout(actions)
@@ -81,15 +93,11 @@ class IntegrityPanel(QWidget):
         self.open_report.setEnabled(False)
         self.open_report.setToolTip("Open the saved verification report from the library integrity folder.")
         self.open_report.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.report))))
-        self.all_files = QPushButton("Verify whole library")
-        self.all_files.setToolTip("Start verification of every enabled media file and every recorded baseline in the selected library.")
-        self.all_files.clicked.connect(self.verify_whole_library)
         self.restore = QPushButton("Restore selected from backup")
         self.restore.setToolTip("Restore selected failed or missing files only from a backup matching the saved checksum. Preserve damaged originals in the integrity recovery folder.")
         self.restore.setEnabled(False)
         self.restore.clicked.connect(self.restore_selected)
         self.table.selectionModel().selectionChanged.connect(self.update_restore)
-        footer.addWidget(self.all_files)
         footer.addWidget(self.restore)
         footer.addStretch(1)
         footer.addWidget(self.open_report)
@@ -124,9 +132,21 @@ class IntegrityPanel(QWidget):
         if previous != self.library.currentData() or root != getattr(self, "_display_root", None):
             self.clear_selection()
         self._display_root = root
+        previous_backup = self.backup.currentData()
+        self.backup.clear()
+        for backup in effective_replica_destinations(config):
+            if backup.get("enabled", True) and backup.get("root"):
+                self.backup.addItem(backup.get("name") or backup["root"], backup["root"])
+        index = self.backup.findData(previous_backup)
+        if index >= 0:
+            self.backup.setCurrentIndex(index)
+        self.compare.setEnabled(self.backup.count() > 0)
 
     def clear_selection(self):
         self.selected_paths = None
+        self.scope_choice.blockSignals(True)
+        self.scope_choice.setCurrentIndex(0)
+        self.scope_choice.blockSignals(False)
         self.scope.setText("Whole library")
         if hasattr(self, "restore"):
             self.model.replace_rows([])
@@ -162,16 +182,39 @@ class IntegrityPanel(QWidget):
             files, _ = QFileDialog.getOpenFileNames(self, "Select media to check", library["root"])
             if files:
                 self.selected_paths = [Path(p) for p in files]
+                self.scope_choice.blockSignals(True)
+                self.scope_choice.setCurrentIndex(1)
+                self.scope_choice.blockSignals(False)
                 self.scope.setText(f"{len(files)} selected files")
+
+    def change_scope(self, index):
+        if index == 0:
+            self.clear_selection()
+        else:
+            if self.selected_paths is None:
+                self.choose_files()
+            if self.selected_paths is None:
+                self.clear_selection()
+
+    def compare_selected_backup(self):
+        root = self.backup.currentData()
+        if not root:
+            return
+        if QMessageBox.question(self, "Compare with backup",
+                f"Compare {self.scope.text().lower()} with:\n{root}\n\nMedia will not be changed. Differences require review; neither copy is automatically preferred.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
+            self.start(False, backup_root=Path(root))
 
     def set_running(self, value):
         self.running = value
-        for control in (self.library, self.verify, self.create, self.choose, self.all_files):
+        for control in (self.library, self.verify, self.create, self.choose, self.scope_choice, self.backup):
             control.setEnabled(not value)
+        self.compare.setEnabled(not value and self.backup.count() > 0)
         self.stop.setEnabled(value)
         self.update_restore()
 
-    def start(self, establish, *, restore_paths=None):
+    def start(self, establish, *, restore_paths=None, backup_root=None):
         if self.running:
             return
         if establish and QMessageBox.question(self, "Create checksum baselines",
@@ -220,8 +263,13 @@ class IntegrityPanel(QWidget):
                 self.result["cancelled"] = self.cancel.is_set()
                 self.result["report"] = catalog.directory / "recovery" if (catalog.directory / "recovery").exists() else None
                 return
-            self.result["rows"] = catalog.run_library_check(config, establish=establish, paths=paths,
-                cancel_event=self.cancel, progress=lambda current, total, path: setattr(self, "_progress", (current, total, path)))
+            progress = lambda current, total, path: setattr(self, "_progress", (current, total, path))
+            if backup_root is not None:
+                self.result["rows"] = catalog.compare_backup(config, backup_root, paths=paths,
+                    cancel_event=self.cancel, progress=progress)
+            else:
+                self.result["rows"] = catalog.run_library_check(config, establish=establish, paths=paths,
+                    cancel_event=self.cancel, progress=progress)
             self.result["report"] = catalog.last_report
             self.result["cancelled"] = catalog.cancelled
         def work():

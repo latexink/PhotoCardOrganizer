@@ -151,7 +151,13 @@ def publish_library(
     except OSError:
         pass
     destination_root.mkdir(parents=True, exist_ok=True)
-    files = list(_library_files(source_root, config["media_rules"]))
+    conflict_root = (source_root / config["safety"].get("conflict_folder", "Conflicts")).resolve()
+    files = [path for path in _library_files(source_root, config["media_rules"])
+             if not path.resolve().is_relative_to(conflict_root)]
+    from .organizer import Organizer
+    publisher = Organizer(config, event_callback=event_callback)
+    manifest = ImportManifest(destination_root)
+    card = folder_import_source(source_root, name="Hub publication")
     stats = HubPublishStats(discovered=len(files))
     now = datetime.now(timezone.utc)
     session_id = uuid.uuid4().hex
@@ -164,7 +170,6 @@ def publish_library(
         f"{safe_segment(config['instance']['name'])}_{session_id[:8]}"
     )
     stats.session_path = records_root / f"{stem}.jsonl"
-    stats.checksum_path = records_root / f"{stem}.sha256"
     local_records_root = (
         source_root
         / ".photocard-organizer"
@@ -173,7 +178,6 @@ def publish_library(
     )
     local_records_root.mkdir(parents=True, exist_ok=True)
     local_session_path = local_records_root / stats.session_path.name
-    local_checksum_path = local_records_root / stats.checksum_path.name
     header = {
         "schema": 1,
         "record_type": "hub_publication_session",
@@ -185,15 +189,10 @@ def publish_library(
         "instance_name": config["instance"]["name"],
         "library_id": config["instance"]["library_id"],
         "started_at": now.isoformat(),
+        "verification": "size",
     }
     for path in (stats.session_path, local_session_path):
         _append_json(path, header, create=True)
-    for path in (stats.checksum_path, local_checksum_path):
-        _append_line(
-            path,
-            f"# Photo Card Organizer SHA-256 hub publication {session_id}",
-            create=True,
-        )
 
     for index, source in enumerate(files, start=1):
         if cancel_event is not None and cancel_event.is_set():
@@ -203,49 +202,46 @@ def publish_library(
         destination = destination_root / relative
         try:
             snapshot = source.stat()
-            checksum = _hash_file(source)
             _verify_source_snapshot(source, snapshot)
             reused = False
             if destination.exists():
-                if (
-                    destination.stat().st_size == snapshot.st_size
-                    and _hash_file(destination) == checksum
-                ):
+                receipt = manifest.library_copy_receipt(source)
+                if (receipt and Path(receipt["destination"]) == destination
+                    and publisher._matches_receipt(snapshot, receipt["source"])
+                    and publisher._matches_receipt(destination.stat(), receipt["copied"])):
                     _verify_source_snapshot(source, snapshot)
                     reused = True
                     stats.reused += 1
-                elif hub.get("conflict_policy", "block") == "archive_and_replace":
-                    _archive_existing(
-                        destination_root, destination, relative
-                    )
                 else:
+                    publisher._queue_replica_conflict(card, source, source,
+                        {"id": f"transfer-hub-{hub['id']}"}, destination)
                     raise OSError(
-                        "The producer channel contains different content at this path."
+                        "An unrecorded or changed destination was preserved; the incoming file is in local Conflict Review."
                     )
             if not reused:
                 _require_destination_space(
                     config, destination_root, snapshot.st_size
                 )
-                _copy_verified(source, destination, checksum, snapshot)
+                _copy_verified(source, destination, "", snapshot)
                 stats.published += 1
                 stats.bytes_published += snapshot.st_size
+            _verify_source_snapshot(source, snapshot)
+            manifest.record_library_copy(source, snapshot, destination)
             record = {
                 "schema": 1,
                 "record_type": "hub_publication",
-                "status": "verified_existing" if reused else "verified",
+                "status": "completed_existing" if reused else "completed",
                 "session_id": session_id,
                 "relative_path": relative.as_posix(),
                 "source_size": snapshot.st_size,
                 "source_mtime_ns": snapshot.st_mtime_ns,
-                "checksum_algorithm": "sha256",
-                "content_checksum": checksum,
+                "verification": "size",
+                "checksum_algorithm": "",
+                "content_checksum": "",
                 "published_at": datetime.now(timezone.utc).isoformat(),
             }
             for path in (stats.session_path, local_session_path):
                 _append_json(path, record)
-            checksum_line = f"{checksum}  {relative.as_posix()}"
-            for path in (stats.checksum_path, local_checksum_path):
-                _append_line(path, checksum_line)
         except OSError as exc:
             stats.failed += 1
             message = f"{relative.as_posix()}: {exc}"
@@ -483,7 +479,7 @@ def _copy_verified(
         _verify_source_snapshot(source, expected_stat)
         if temporary.stat().st_size != expected_stat.st_size:
             raise OSError("Published size does not match the source.")
-        if _hash_file(temporary) != checksum:
+        if checksum and _hash_file(temporary) != checksum:
             raise OSError("Published file failed SHA-256 verification.")
         _verify_source_snapshot(source, expected_stat)
         commit_without_overwrite(temporary, destination)

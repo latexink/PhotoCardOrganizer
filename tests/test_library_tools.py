@@ -149,7 +149,8 @@ class LibraryToolTests(unittest.TestCase):
             ]
         )[0]
 
-        first = export_captures([capture], destination)
+        with patch("photocard.library_tools._hash_file", side_effect=AssertionError("New exports must not hash")):
+            first = export_captures([capture], destination)
         second = export_captures([capture], destination)
         jpg.write_bytes(b"changed-jpeg-content")
         third = export_captures([capture], destination)
@@ -165,7 +166,8 @@ class LibraryToolTests(unittest.TestCase):
             for line in first.log_path.read_text(encoding="utf-8").splitlines()
         ]
         self.assertEqual(2, len(records))
-        self.assertTrue(all(record["verification"] == "sha256" for record in records))
+        self.assertTrue(all(record["verification"] == "size" for record in records))
+        self.assertTrue(all(record["checksum"] == "" for record in records))
 
     def test_catalog_skips_internal_manifest_folder(self) -> None:
         library = self.base / "library"

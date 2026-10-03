@@ -65,8 +65,15 @@ class Organizer:
     ):
         self.config = config
         self.dry_run = dry_run
+        from .config import has_active_library
+
+        if not has_active_library(config):
+            raise ValueError("Set up an enabled library destination before importing media.")
         self.destination_root = Path(config["destination_root"]).expanduser()
         if not dry_run:
+            from .job_journal import migration_pending
+            if migration_pending(self.destination_root):
+                raise ValueError("This library has an unfinished migration. Use Resume interrupted operation in Libraries before importing.")
             self.destination_root.mkdir(parents=True, exist_ok=True)
         self.manifest = ImportManifest(self.destination_root, create=not dry_run)
         self.geocoder = ReverseGeocoder(config, self.manifest)
@@ -75,6 +82,7 @@ class Organizer:
         self.decision_callback = decision_callback
         self._decision_overrides: dict[str, DecisionResult] = {}
         self.replica_destinations = []
+        self._replica_manifests = {}
         primary_key = os.path.normcase(str(self.destination_root.resolve()))
         for replica in effective_replica_destinations(config):
             root = str(replica.get("root", "")).strip()
@@ -244,10 +252,16 @@ class Organizer:
         cls, source: Path, destination: Path, algorithm: str = "sha256"
     ) -> tuple[bool, str]:
         try:
-            if source.stat().st_size != destination.stat().st_size:
+            source_stat, destination_stat = source.stat(), destination.stat()
+            if source_stat.st_size != destination_stat.st_size:
                 return False, ""
             source_hash = cls._hash_file(source, algorithm)
-            return source_hash == cls._hash_file(destination, algorithm), source_hash
+            destination_hash = cls._hash_file(destination, algorithm)
+            if not cls._same_snapshot(source.stat(), source_stat) or not cls._same_snapshot(destination.stat(), destination_stat):
+                raise SourceChangedError("File changed during conflict comparison; retry after it settles")
+            return source_hash == destination_hash, source_hash
+        except SourceChangedError:
+            raise
         except OSError:
             return False, ""
 
@@ -282,57 +296,23 @@ class Organizer:
         if not requested.exists():
             return requested, "", None
         matches, content_hash = self._same_content(source, requested, checksum_algorithm) if compare_content else (False, "")
-        safety = self.config["safety"]
         conflict_type = "exact_duplicate" if matches else "filename_conflict"
-        if matches:
-            policy = safety.get("exact_duplicate_policy", "rename")
-            interactive = bool(
-                self.decision_callback and safety.get("manual_duplicate_prompt", False)
-            )
-        else:
-            # Preserve both versions and keep the batch moving. Filename conflicts
-            # are reviewed after transfer instead of stopping an active import.
-            policy = "conflict_folder"
-            interactive = False
-        if interactive or policy == "ask":
-            result = self._decide(
-                DecisionRequest(
-                    kind=conflict_type,
-                    title="Exact duplicate" if matches else "Destination filename conflict",
-                    message=(
-                        f"{requested.name} already exists with "
-                        f"{'identical' if matches else 'different'} content. "
-                        "Both files can be preserved with a new name or an organized conflict folder."
-                    ),
-                    options=(
-                        ("rename", "Append filename"),
-                        ("conflict_folder", "Use conflict folder"),
-                        ("skip", "Skip file"),
-                        ("stop", "Stop this card"),
-                    ),
-                    default_action="rename",
-                    source=source,
-                    destination=requested,
-                ),
-                "rename",
-            )
-            policy = result.action
-        if policy == "stop":
-            raise StopCardRequested()
-        if policy == "skip":
-            return None, content_hash, None
+        return self._conflict_destination(card, requested, conflict_type, content_hash)
 
-        base_candidate = requested
-        if policy == "conflict_folder":
-            relative = requested.relative_to(self.destination_root)
-            base_candidate = self.destination_root / self._safe_prefix(safety["conflict_folder"]) / relative
-            if not base_candidate.exists():
-                return base_candidate, content_hash, {
-                    "existing_path": requested,
-                    "conflict_type": conflict_type,
-                    "resolution": policy,
-                    "content_checksum": content_hash,
-                }
+    def _conflict_destination(self, card, requested, conflict_type, content_hash=""):
+        safety = self.config["safety"]
+        # Every collision enters review, even when identical. Transfer jobs never
+        # delete duplicates or stop for a conflict decision.
+        policy = "conflict_folder"
+        relative = requested.relative_to(self.destination_root)
+        base_candidate = self.destination_root / self._safe_prefix(safety["conflict_folder"]) / relative
+        if not base_candidate.exists():
+            return base_candidate, content_hash, {
+                "existing_path": requested,
+                "conflict_type": conflict_type,
+                "resolution": policy,
+                "content_checksum": content_hash,
+            }
 
         appendage_template = str(safety.get("conflict_filename_appendage", "_{number}"))
         for number in range(2, 10000):
@@ -356,6 +336,51 @@ class Organizer:
                     "content_checksum": content_hash,
                 }
         raise OSError(f"Could not find an available filename near {requested}")
+
+    def _queue_replica_conflict(self, card, source, primary_destination, replica, existing, *, expected_existing=None):
+        from .job_journal import snapshot
+        source_stat = source.stat()
+        existing_stat = expected_existing if expected_existing is not None else existing.stat()
+        relative = primary_destination.relative_to(self.destination_root)
+        key = hashlib.sha256(f"replica:{replica['id']}:{relative.as_posix()}".encode()).hexdigest()
+        known = self._known_replica_conflict(source, primary_destination, replica, existing)
+        if known is not None:
+            return known
+        previous = self.manifest.conflict_for_source(key)
+        if previous:
+            incoming = Path(previous["incoming_path"]).resolve()
+            if incoming.is_relative_to(self.destination_root.resolve()) and incoming.is_file():
+                matches, _ = self._same_content(source, incoming)
+                if matches:
+                    self.manifest.record_backup_conflict_receipt(key, dict(source=snapshot(source_stat),
+                        existing=snapshot(existing_stat), incoming=snapshot(incoming.stat()), incoming_path=str(incoming)))
+                    return incoming
+        requested = self.destination_root / "Backups" / safe_segment(replica["id"]) / relative
+        incoming, _, _ = self._conflict_destination(card, requested, "filename_conflict")
+        self._copy_and_verify(source, incoming, "size")
+        self.manifest.record_conflict(source_key=key, card_id=card.card_id, source_path=source,
+            existing_path=existing, incoming_path=incoming, conflict_type="filename_conflict", resolution="conflict_folder")
+        self.manifest.record_backup_conflict_receipt(key, dict(source=snapshot(source_stat),
+            existing=snapshot(existing_stat), incoming=snapshot(incoming.stat()), incoming_path=str(incoming)))
+        return incoming
+
+    def _known_replica_conflict(self, source, primary_destination, replica, existing):
+        relative = primary_destination.relative_to(self.destination_root)
+        key = hashlib.sha256(f"replica:{replica['id']}:{relative.as_posix()}".encode()).hexdigest()
+        receipt = self.manifest.backup_conflict_receipt(key)
+        if receipt is None:
+            return None
+        incoming = Path(receipt["incoming_path"])
+        conflict_root = self.destination_root / self._safe_prefix(self.config["safety"]["conflict_folder"])
+        try:
+            if (incoming.resolve().is_relative_to(conflict_root.resolve()) and not self._is_link_like(incoming)
+                and self._matches_receipt(source.stat(), receipt["source"])
+                and self._matches_receipt(existing.stat(), receipt["existing"])
+                and self._matches_receipt(incoming.stat(), receipt["incoming"])):
+                return incoming
+        except (OSError, ValueError):
+            pass
+        return None
 
     def _destination_space_status(self, root: Path, source_size: int) -> tuple[bool, str, bool]:
         capacity = capacity_for(root)
@@ -437,6 +462,14 @@ class Organizer:
             expected_inode
             and current_inode
             and (expected_inode != current_inode or expected_device != current_device)
+        )
+
+    @staticmethod
+    def _matches_receipt(current, expected: dict) -> bool:
+        # Size and timestamps alone cannot identify a completed copy on restart.
+        return bool(expected.get("st_ino") and current.st_ino) and all(
+            getattr(current, name) == expected.get(name)
+            for name in ("st_dev", "st_ino", "st_size", "st_mtime_ns")
         )
 
     @serialized_io
@@ -559,7 +592,7 @@ class Organizer:
             return [], True
         relative_path = primary_destination.relative_to(self.destination_root)
         source = source_override or primary_destination
-        verification = self.config["safety"].get("replica_verification", "sha256")
+        verification = "size"
         records: list[dict[str, object]] = []
         required_ok = True
 
@@ -612,49 +645,30 @@ class Organizer:
                         raise OSError(reason)
 
                 if destination.exists():
-                    matches, _checksum = self._same_content(
-                        source, destination, verification
-                    )
+                    existing_stat = destination.stat()
+                    replica_manifest = self._replica_manifest(replica_root)
+                    receipt = replica_manifest.library_copy_receipt(source)
+                    matches = bool(receipt and Path(receipt["destination"]) == destination
+                        and self._matches_receipt(source.stat(), receipt["source"])
+                        and self._matches_receipt(destination.stat(), receipt["copied"]))
+                    if not matches:
+                        known_conflict = self._known_replica_conflict(source, primary_destination, replica, destination)
+                        if known_conflict is not None:
+                            record["conflict_review_path"] = str(known_conflict)
+                            raise OSError("Backup conflict still awaits resolution; source retained. Marking reviewed does not replace the backup.")
+                        matches, _checksum = self._same_content(source, destination, "sha256")
                     if matches:
                         record["status"] = "verified_existing"
                         records.append(record)
                         continue
-                    policy = replica.get("conflict_policy", "block")
-                    if self.decision_callback:
-                        decision = self._decide(
-                            DecisionRequest(
-                                kind=f"replica_conflict_{replica['id']}",
-                                title=f"Replica conflict: {replica['name']}",
-                                message=(
-                                    "The replica contains different content at the resolved clone path. "
-                                    "The existing replica file can be archived before replacement."
-                                ),
-                                options=(
-                                    ("archive_and_replace", "Archive existing and replace"),
-                                    ("skip", "Skip this replica"),
-                                    ("stop", "Stop this card"),
-                                ),
-                                default_action=(
-                                    "archive_and_replace"
-                                    if policy == "archive_and_replace"
-                                    else "skip"
-                                ),
-                                source=primary_destination,
-                                destination=destination,
-                            ),
-                            "skip",
-                        )
-                        policy = decision.action
-                    if policy == "stop":
-                        raise StopCardRequested()
-                    if policy != "archive_and_replace":
-                        raise OSError("Replica path contains different content.")
-                    archived = self._archive_replica_existing(
-                        card, replica_root, relative_path, destination
-                    )
-                    record["archived_existing"] = archived.relative_to(replica_root).as_posix()
+                    incoming = self._queue_replica_conflict(card, source, primary_destination, replica, destination,
+                        expected_existing=existing_stat)
+                    record["conflict_review_path"] = str(incoming)
+                    raise OSError("Backup conflict sent to local review; existing backup was not changed.")
 
                 self._copy_and_verify(source, destination, verification)
+                replica_manifest = self._replica_manifest(replica_root)
+                replica_manifest.record_library_copy(source, source.stat(), destination)
                 record["status"] = "verified"
             except StopCardRequested:
                 raise
@@ -667,6 +681,12 @@ class Organizer:
                     required_ok = False
             records.append(record)
         return records, required_ok
+
+    def _replica_manifest(self, root):
+        key = str(root)
+        if key not in self._replica_manifests:
+            self._replica_manifests[key] = ImportManifest(root)
+        return self._replica_manifests[key]
 
     def _record_transfer(
         self,
@@ -695,7 +715,7 @@ class Organizer:
             "action": action,
             "verification": verification,
             "content_checksum": content_hash,
-            "checksum_algorithm": verification if content_hash else "",
+            "checksum_algorithm": "sha256" if content_hash else "",
             "transferred_at": transferred_at,
             "replicas": replica_records,
         }
@@ -746,6 +766,7 @@ class Organizer:
             warning = f"Transferred {source.name}, but could not update the local index: {exc}"
             stats.warnings.append(warning)
             self._emit("warning", warning, source=str(source))
+            return False, False
         return portable_recorded, required_local_recorded
 
     def _process_source(
@@ -775,12 +796,8 @@ class Organizer:
         if card.source_type == "reorganization" and requested_destination.resolve() == source.resolve():
             stats.skipped += 1
             return
-        verification = (
-            safety.get("move_checksum_algorithm", "sha256")
-            if card.action == "move"
-            else safety.get("copy_verification", "size")
-        )
-        comparison_algorithm = verification if verification != "size" else "sha256"
+        verification = "size"
+        comparison_algorithm = "sha256"
         destination = None
         content_hash = ""
         conflict_info = None
@@ -790,16 +807,17 @@ class Organizer:
             pending_destination = Path(str(pending["destination_path"]))
             try:
                 pending_destination.relative_to(self.destination_root)
-                matches, pending_hash = self._same_content(
-                    source, pending_destination, comparison_algorithm
-                )
+                receipt = self.manifest.pending_copy_receipt(source_key)
+                matches = bool(receipt and self._matches_receipt(source.stat(), receipt["source"])
+                               and self._matches_receipt(pending_destination.stat(), receipt["destination"]))
             except (OSError, ValueError):
-                matches, pending_hash = False, ""
+                matches = False
             if matches:
                 destination = pending_destination
-                content_hash = pending_hash
+                conflict_info = receipt["destination"].get("conflict")
+                if conflict_info:
+                    content_hash = str(conflict_info.get("content_checksum", ""))
                 resumed_primary = True
-                verification = comparison_algorithm
                 self._emit(
                     "info",
                     f"Resuming pending replicas and records for {source.name}",
@@ -868,20 +886,13 @@ class Organizer:
                 source_size=source_stat.st_size,
                 source_mtime_ns=source_stat.st_mtime_ns,
             )
-            copied_hash = self._copy_and_verify(
+            self._copy_and_verify(
                 source,
                 destination,
                 verification,
                 expected_stat=source_stat,
             )
-            if copied_hash:
-                content_hash = copied_hash
-            elif content_hash:
-                if self._hash_file(destination, comparison_algorithm) != content_hash:
-                    raise OSError(
-                        f"{comparison_algorithm.upper()} conflict-copy verification failed."
-                    )
-                verification = comparison_algorithm
+            self.manifest.record_pending_copy(source_key, source_stat, destination.stat(), conflict_info)
 
         if conflict_info is not None:
             try:
@@ -899,10 +910,9 @@ class Organizer:
                 warning = f"Could not add {source.name} to conflict review: {exc}"
                 stats.warnings.append(warning)
                 self._emit("warning", warning, source=str(source))
-                if card.source_type == "reorganization":
-                    raise
+                raise
 
-        if resumed_primary and card.source_type == "reorganization":
+        if resumed_primary and conflict_info is None and card.source_type == "reorganization":
             conflict_root = self.destination_root / self._safe_prefix(safety["conflict_folder"])
             if conflict_root in destination.parents:
                 matches, _ = self._same_content(source, requested_destination, comparison_algorithm)
@@ -945,7 +955,7 @@ class Organizer:
             self._emit("warning", warning, source=str(source))
             return
         try:
-            if card.source_type != "reorganization":
+            if card.action != "move":
                 self.manifest.clear_pending(source_key)
         except (OSError, sqlite3.Error) as exc:
             warning = f"Completed {source.name}, but could not clear its pending marker: {exc}"
@@ -959,7 +969,7 @@ class Organizer:
             pass
         self._emit(
             "success",
-            f"{card.action.capitalize()} verified: {source.name}",
+            f"{card.action.capitalize()} complete: {source.name}",
             source=str(source),
             destination=str(destination),
         )
@@ -995,20 +1005,15 @@ class Organizer:
                             raise SourceChangedError("The destination no longer belongs to this library.")
                         if not self._same_snapshot(source.stat(), source_stat):
                             raise SourceChangedError("Source changed before cleanup; the original was retained.")
-                        self.manifest.relocate_destinations(source, destination)
+                        self.manifest.relocate_destinations(source, destination, expected_source=source_stat)
                         from .integrity import IntegrityCatalog
                         catalog = IntegrityCatalog(self.destination_root, self.config.get("local_history", {}).get("directory") or None)
                         catalog.relocate(source, destination)
-                        if self.config.get("organization", {}).get("checksum_new_baselines", False):
-                            relative = destination.relative_to(catalog.root).as_posix()
-                            if relative not in catalog.records():
-                                catalog.record(destination, content_hash, verification, verified=True)
                     source.unlink()
-                    if card.source_type == "reorganization":
-                        try:
-                            self.manifest.clear_pending(source_key)
-                        except (OSError, sqlite3.Error) as exc:
-                            stats.warnings.append(f"Moved {source.name}, but could not clear its pending marker: {exc}")
+                    try:
+                        self.manifest.clear_pending(source_key)
+                    except (OSError, sqlite3.Error) as exc:
+                        stats.warnings.append(f"Moved {source.name}, but could not clear its pending marker: {exc}")
                     return
                 except OSError as exc:
                     delete_error = exc
@@ -1326,7 +1331,7 @@ class Organizer:
                 and primary_local_history is not None
                 and primary_local_history.contains(source_key)
             )
-            if card.source_type != "reorganization" and (
+            if card.source_type != "reorganization" and pending is None and (
                 (history is not None and history.contains(source_key))
                 or self.manifest.contains(source_key)
                 or completed_locally

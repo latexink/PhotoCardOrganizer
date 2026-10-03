@@ -19,6 +19,15 @@ from photocard.source_monitor import SourceDiscovery
 
 
 class ScanOptimizationTests(unittest.TestCase):
+    def test_configuration_change_requires_idle_scan_lock(self):
+        monitor = MonitorService({}, lambda event: None)
+        callback = Mock()
+        with monitor._scan_lock:
+            self.assertFalse(monitor.run_if_idle(callback))
+        callback.assert_not_called()
+        self.assertTrue(monitor.run_if_idle(callback))
+        callback.assert_called_once_with()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

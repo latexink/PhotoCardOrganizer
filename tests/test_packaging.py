@@ -20,6 +20,15 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 class PackagingContractTests(unittest.TestCase):
+    def test_preview_windows_version_uses_numeric_metadata_and_visible_suffix(self) -> None:
+        module = runpy.run_path(str(PROJECT_ROOT / 'packaging' / 'build_bundle.py'))
+        self.assertEqual((0, 11, 3, 2), module['version_tuple']('0.11.3.dev2'))
+        script = (PROJECT_ROOT / 'packaging' / 'windows' / 'PhotoCardOrganizer.iss').read_text()
+        self.assertIn('VersionInfoVersion={#NumericAppVersion}', script)
+        self.assertIn('VersionInfoTextVersion={#AppVersion}', script)
+        build = (PROJECT_ROOT / 'packaging' / 'windows' / 'build-installer.ps1').read_text()
+        self.assertIn('/DNumericAppVersion=$NumericVersion', build)
+
     def test_gui_check_uses_disposable_state_without_loading_user_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)

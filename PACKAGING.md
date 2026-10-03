@@ -79,4 +79,8 @@ Before publishing a release:
 
 The repository includes `packaging/windows/sandbox/PhotoCardOrganizer-0.11.1-Release-Test.wsb` for repeatable Windows Sandbox lifecycle checks. It maps only release assets and scripts into the sandbox, creates a sandbox-only user-data marker, runs install, upgrade, repair, packaged GUI, and uninstall checks, then writes JSON reports under `build/windows` on the host.
 
+The separate `PhotoCardOrganizer-dev2-Test.wsb` checks the current preview against
+0.11.2. See [preview validation](docs/VALIDATION-0.11.3.dev2.md) before using it;
+Application Control may block unsigned installers. Do not bypass that protection.
+
 Never perform release verification with move enabled against the only copy of media.

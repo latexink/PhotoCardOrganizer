@@ -55,6 +55,17 @@ class ReorganizationTests(unittest.TestCase):
         self.assertEqual(result.blocked, 1)
         self.assertTrue(source.exists())
 
+    def test_global_rules_can_override_saved_library_layout_without_mutating_it(self):
+        self.file("old/clip.mp4")
+        self.config["media_rules"]["video"].update(folder_segments=["Global"], filename_template="new_{original}")
+        library = self.config["library_destinations"][0]
+        library["organization_overrides"] = {"video": {"folder_segments": ["Custom"], "filename_template": "{original}"}}
+        saved = build_reorganization_plan(self.config, "Use current detailed rules", {"video"})
+        global_plan = build_reorganization_plan(self.config, "Use global organization rules", {"video"})
+        self.assertEqual(saved.entries[0].destination, self.root / "Custom/clip.mp4")
+        self.assertEqual(global_plan.entries[0].destination, self.root / "Global/new_clip.mp4")
+        self.assertEqual(library["organization_overrides"]["video"]["folder_segments"], ["Custom"])
+
     def test_separates_media_ignores_internal_state_and_is_repeatable(self):
         for name in ("old/a.jpg", "old/a.cr2", "old/a.xmp", "old/a.mp4", "old/readme.txt",
                      ".photocard/ignore.jpg", ".photocard-organizer/ignore.jpg", "Conflicts/ignore.jpg"):
@@ -220,16 +231,15 @@ class ReorganizationTests(unittest.TestCase):
         self.assertEqual(len(worker.manifest.rename_intents()), 1)
         self.assertEqual(destination.read_bytes(), b"changed after relocation")
 
-    def test_missing_baseline_is_optional_and_existing_checksum_follows_rename(self):
+    def test_legacy_baseline_option_does_not_hash_during_rename(self):
         source = self.file("old/a.mp4")
         self.config["organization"]["checksum_new_baselines"] = True
         with patch("photocard.reorganization.checksum", wraps=checksum) as hash_file:
             _, result = self.run_plan(self.plan())
         self.assertEqual(result.imported, 1)
-        self.assertEqual(hash_file.call_count, 1)
+        self.assertEqual(hash_file.call_count, 0)
         catalog = IntegrityCatalog(self.root, self.root.parent / "local")
-        self.assertEqual(set(catalog.records()), {"Videos/a.mp4"})
-        self.assertEqual(catalog.records()["Videos/a.mp4"]["digest"], checksum(self.root / "Videos/a.mp4"))
+        self.assertEqual(catalog.records(), {})
         self.assertFalse(source.exists())
 
     def test_existing_baseline_is_not_rehashed_during_move(self):
@@ -268,7 +278,7 @@ class ReorganizationTests(unittest.TestCase):
         self.assertEqual(set(catalog.records()), {"Videos/a.mp4"})
         self.assertEqual(catalog.records()["Videos/a.mp4"]["digest"], digest)
 
-    def test_verified_copy_fallback_reuses_its_hash_for_missing_baseline(self):
+    def test_copy_fallback_does_not_create_automatic_baselines(self):
         self.file("old/a.mp4")
         self.config["organization"]["checksum_new_baselines"] = True
         with patch("photocard.reorganization.same_filesystem", return_value=False), patch(
@@ -277,4 +287,4 @@ class ReorganizationTests(unittest.TestCase):
             _, result = self.run_plan(self.plan())
         self.assertEqual(result.failed, 0, result.errors)
         catalog = IntegrityCatalog(self.root, self.root.parent / "local")
-        self.assertEqual(catalog.records()["Videos/a.mp4"]["digest"], checksum(self.root / "Videos/a.mp4"))
+        self.assertEqual(catalog.records(), {})

@@ -92,6 +92,20 @@ class ConfigMigrationTests(unittest.TestCase):
     def test_normalization_always_emits_current_schema(self) -> None:
         self.assertEqual(CURRENT_CONFIG_SCHEMA, normalize_config({"schema": 1})["schema"])
 
+    def test_explicit_empty_library_configuration_stays_paused(self) -> None:
+        normalized = normalize_config(
+            {"library_setup_complete": True, "library_destinations": []}
+        )
+
+        self.assertEqual([], normalized["library_destinations"])
+        self.assertEqual("", normalized["default_library_id"])
+        self.assertEqual("", normalized["instance"]["library_id"])
+
+    def test_invalid_diagnostics_section_uses_safe_defaults(self) -> None:
+        normalized = normalize_config({"diagnostics": "not-a-mapping"})
+
+        self.assertFalse(normalized["diagnostics"]["detailed_logging"])
+
     def test_legacy_filename_conflict_choices_migrate_to_review_queue(self) -> None:
         for legacy_policy in ("ask", "rename", "skip", "conflict_folder"):
             with self.subTest(legacy_policy=legacy_policy):

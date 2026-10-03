@@ -157,12 +157,12 @@ class CardOnboardingWizard(QWizard):
         self.preset_combo.addItems(list(ORGANIZATION_PRESETS))
         self.media_checks: dict[str, QCheckBox] = {}
         self.copy_verification_combo = choice_combo(
-            [("File size", "size"), ("SHA-256", "sha256"), ("SHA-512", "sha512"), ("BLAKE2b", "blake2b")],
+            [("File size", "size")],
             str(safety.get("copy_verification", "size")),
         )
         self.move_checksum_combo = choice_combo(
-            [("SHA-256", "sha256"), ("SHA-512", "sha512"), ("BLAKE2b", "blake2b")],
-            str(safety.get("move_checksum_algorithm", "sha256")),
+            [("File size", "size")],
+            "size",
         )
         self.minimum_percent_edit = QDoubleSpinBox()
         self.minimum_percent_edit.setRange(0, 99)
@@ -324,8 +324,8 @@ class CardOnboardingWizard(QWizard):
             media_layout.addWidget(check)
         media_layout.addStretch(1)
         form.addRow("Media types", media_row)
-        form.addRow("Copy verification", self.copy_verification_combo)
-        form.addRow("Move checksum", self.move_checksum_combo)
+        self.copy_verification_combo.hide()
+        self.move_checksum_combo.hide()
         form.addRow("Free-space reserve (percent)", self.minimum_percent_edit)
         form.addRow("Free-space reserve (gigabytes)", self.minimum_gb_edit)
         form.addRow("", self.location_check)
@@ -884,8 +884,8 @@ class ReplicaDialog(QDialog):
             title="Choose a backup destination",
         )
         self.conflict_combo = choice_combo(
-            [("Keep existing; report conflict", "block"), ("Keep old version and replace", "archive_and_replace")],
-            str(self.original.get("conflict_policy", "block")),
+            [("Preserve locally for review", "block")],
+            "block",
         )
         self.kind_combo = choice_combo([
             ("Local folder", "local"), ("Mounted network folder", "network"),
@@ -899,7 +899,7 @@ class ReplicaDialog(QDialog):
         self.history_check.setChecked(bool(self.original.get("include_history", True)))
         self.name_edit.setToolTip("A readable label for this backup or clone destination.")
         self.root_edit.setToolTip("A destination root different from the primary library and every other backup root.")
-        self.conflict_combo.setToolTip("Block preserves both locations unchanged. Archive and replace preserves the old replica file in its conflict area.")
+        self.conflict_combo.setToolTip("Keep the backup unchanged and preserve the incoming version in the library's local Conflicts folder. Required backup conflicts retain move sources.")
         self.enabled_check.setToolTip("Disabled destinations remain configured but receive no files or records.")
         self.required_check.setToolTip("A required destination must verify successfully before an import completes or a move source can be deleted.")
         self.history_check.setToolTip("Write matching session and checksum records alongside this backup.")
@@ -1297,11 +1297,8 @@ class TransferHubDialog(QDialog):
             bool(self.original.get("write_receipts", True))
         )
         self.conflict_combo = choice_combo(
-            [
-                ("Block changed hub path", "block"),
-                ("Archive old hub file and replace", "archive_and_replace"),
-            ],
-            str(self.original.get("conflict_policy", "block")),
+            [("Preserve locally for review", "block")],
+            "block",
         )
         self.enabled_check = QCheckBox("Hub enabled on this client")
         self.enabled_check.setChecked(bool(self.original.get("enabled", True)))

@@ -364,7 +364,7 @@ def export_captures(
     *,
     groups: Iterable[CaptureGroup] = (),
     group_subfolders: bool = True,
-    verification: str = "sha256",
+    verification: str = "size",
     conflict_appendage: str = "_{number}",
     minimum_free_percent: float = 0.0,
     minimum_free_gb: float = 0.0,
@@ -408,13 +408,18 @@ def export_captures(
             target_directory.mkdir(parents=True, exist_ok=True)
             try:
                 snapshot = item.path.stat()
-                checksum = _hash_file(item.path, verification)
+                requested = target_directory / item.path.name
+                comparison = "sha256" if verification == "size" else verification
+                checksum = (
+                    _hash_file(item.path, comparison)
+                    if verification != "size" or requested.exists() else ""
+                )
                 _verify_source_snapshot(item.path, snapshot)
                 target, reused = _available_export_path(
-                    target_directory / item.path.name,
+                    requested,
                     snapshot.st_size,
                     checksum,
-                    verification,
+                    comparison,
                     conflict_appendage,
                 )
                 _verify_source_snapshot(item.path, snapshot)
@@ -435,15 +440,6 @@ def export_captures(
                     stats.files_copied += 1
                     stats.bytes_copied += snapshot.st_size
                 else:
-                    if not _matching_export(
-                        target,
-                        snapshot.st_size,
-                        checksum,
-                        verification,
-                    ):
-                        raise OSError(
-                            "An existing export changed while it was being verified."
-                        )
                     stats.files_reused += 1
                 record = {
                     "session_id": session_id,
@@ -454,7 +450,8 @@ def export_captures(
                     "capture_group": group.group_id if group else "",
                     "capture_group_kind": group.kind if group else "",
                     "verification": verification,
-                    "checksum": checksum,
+                    "checksum": checksum if verification != "size" else "",
+                    "conflict_comparison": comparison if checksum and verification == "size" else "",
                     "source_size": snapshot.st_size,
                     "reused_existing": reused,
                     "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -515,10 +512,12 @@ def _matching_export(
     verification: str,
 ) -> bool:
     stat = destination.stat()
-    return (
+    matching = (
         stat.st_size == source_size
         and _hash_file(destination, verification) == source_checksum
     )
+    _verify_source_snapshot(destination, stat)
+    return matching
 
 
 def _verify_source_snapshot(source: Path, expected_stat) -> None:
@@ -581,7 +580,7 @@ def _copy_verified(
         _verify_source_snapshot(source, expected_stat)
         if expected_stat.st_size != temporary.stat().st_size:
             raise OSError("Exported size does not match the source.")
-        if _hash_file(temporary, verification) != expected_checksum:
+        if verification != "size" and _hash_file(temporary, verification) != expected_checksum:
             raise OSError(f"{verification.upper()} export verification failed.")
         _verify_source_snapshot(source, expected_stat)
         commit_without_overwrite(temporary, destination)

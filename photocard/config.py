@@ -12,7 +12,7 @@ from typing import Any
 
 from . import __version__
 
-CURRENT_CONFIG_SCHEMA = 6
+CURRENT_CONFIG_SCHEMA = 8
 DEFAULT_USER_AGENT = (
     f"PhotoCardOrganizer/{'.'.join(__version__.split('.')[:2])}"
 )
@@ -23,6 +23,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "destination_root": "~/Pictures/Photo Card Library",
     "default_library_id": "",
     "library_destinations": [],
+    # A fresh configuration has an implicit main library. Once the user manages
+    # libraries explicitly, an empty list means imports are intentionally paused.
+    "library_setup_complete": False,
+    "diagnostics": {
+        "detailed_logging": False,
+    },
     "media_library_routes": {
         "photo": "",
         "raw": "",
@@ -80,13 +86,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_action": "copy",
         "confirm_destructive_actions": True,
         "copy_verification": "size",
-        "move_checksum_algorithm": "sha256",
-        "replica_verification": "sha256",
+        "move_checksum_algorithm": "size",
+        "replica_verification": "size",
         "minimum_destination_free_percent": 10.0,
         "minimum_destination_free_gb": 5.0,
         "warn_source_free_percent": 10.0,
         "conflict_policy": "conflict_folder",
-        "exact_duplicate_policy": "rename",
+        "exact_duplicate_policy": "conflict_folder",
         "conflict_filename_appendage": "_{number}",
         "conflict_folder": "Conflicts",
         "manual_conflict_prompt": False,
@@ -212,6 +218,19 @@ def migrate_config_data(config: dict[str, Any]) -> tuple[dict[str, Any], int]:
             for replica in migrated.get("replica_destinations", []):
                 replica.setdefault("kind", "local")
             schema = 6
+        elif schema == 6:
+            # Older clients recreate a forgotten final library. The schema bump
+            # prevents them from silently reactivating its destination.
+            migrated.setdefault("library_setup_complete", bool(migrated.get("library_destinations")))
+            schema = 7
+        elif schema == 7:
+            safety = migrated.setdefault("safety", {})
+            for key in ("copy_verification", "move_checksum_algorithm", "replica_verification"):
+                safety[key] = "size"
+            safety["exact_duplicate_policy"] = "conflict_folder"
+            safety["manual_duplicate_prompt"] = False
+            migrated.setdefault("organization", {})["checksum_new_baselines"] = False
+            schema = 8
         else:
             raise ValueError(f"No configuration migration is available from schema {schema}.")
         migrated["schema"] = schema
@@ -379,6 +398,15 @@ def select_library_destination(
     instance = config.setdefault("instance", {})
     instance["library_id"] = str(selected["id"])
     return config
+
+
+def has_active_library(config: dict[str, Any]) -> bool:
+    """Return whether a configured destination can accept new media."""
+    return any(
+        library.get("enabled", True) and str(library.get("root", "")).strip()
+        for library in config.get("library_destinations", [])
+        if isinstance(library, dict)
+    )
 
 
 def normalize_travel_library(library: dict[str, Any]) -> dict[str, Any] | None:
@@ -562,7 +590,10 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
             library_roots.add(root_key)
         library_ids.add(clean_library["id"])
         libraries.append(clean_library)
-    if not libraries:
+    library_setup_complete = bool(
+        normalized.get("library_setup_complete", False) or libraries
+    )
+    if not libraries and not library_setup_complete:
         library_id = str(
             normalized.get("default_library_id", "")
             or instance.get("library_id", "")
@@ -579,33 +610,37 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
                 "enabled": True,
             }
         )
-    default_library_id = str(
-        normalized.get("default_library_id", "")
-    )
-    selected_library = next(
-        (
-            library
-            for library in libraries
-            if library["id"] == default_library_id
-            and library.get("enabled", True)
-            and library.get("root")
-        ),
-        None,
-    )
-    if selected_library is None:
+        library_setup_complete = True
+    normalized["library_destinations"] = libraries
+    normalized["library_setup_complete"] = library_setup_complete
+    if libraries:
+        default_library_id = str(normalized.get("default_library_id", ""))
         selected_library = next(
             (
                 library
                 for library in libraries
-                if library.get("enabled", True) and library.get("root")
+                if library["id"] == default_library_id
+                and library.get("enabled", True)
+                and library.get("root")
             ),
-            libraries[0],
+            None,
         )
-    normalized["library_destinations"] = libraries
-    normalized["default_library_id"] = str(selected_library["id"])
-    if selected_library.get("root"):
-        normalized["destination_root"] = str(selected_library["root"])
-    instance["library_id"] = str(selected_library["id"])
+        if selected_library is None:
+            selected_library = next(
+                (
+                    library
+                    for library in libraries
+                    if library.get("enabled", True) and library.get("root")
+                ),
+                libraries[0],
+            )
+        normalized["default_library_id"] = str(selected_library["id"])
+        if selected_library.get("root"):
+            normalized["destination_root"] = str(selected_library["root"])
+        instance["library_id"] = str(selected_library["id"])
+    else:
+        normalized["default_library_id"] = ""
+        instance["library_id"] = ""
 
     routes = normalized.get("media_library_routes", {})
     if not isinstance(routes, dict):
@@ -615,6 +650,13 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
         kind: str(routes.get(kind, "")) if str(routes.get(kind, "")) in valid_ids else ""
         for kind in ("photo", "raw", "video", "sidecar")
     }
+    diagnostics = normalized.get("diagnostics")
+    if not isinstance(diagnostics, dict):
+        diagnostics = {}
+        normalized["diagnostics"] = diagnostics
+    diagnostics["detailed_logging"] = bool(
+        diagnostics.get("detailed_logging", False)
+    )
 
     profiles: list[dict[str, Any]] = []
     profile_ids: set[str] = set()
@@ -686,22 +728,22 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     safety = normalized["safety"]
     if safety["default_action"] not in {"copy", "move"}:
         safety["default_action"] = "copy"
-    if safety["copy_verification"] not in {"size", "sha256", "sha512", "blake2b"}:
-        safety["copy_verification"] = "size"
-    if safety["move_checksum_algorithm"] not in {"sha256", "sha512", "blake2b"}:
-        safety["move_checksum_algorithm"] = "sha256"
-    if safety["replica_verification"] not in {"sha256", "sha512", "blake2b"}:
-        safety["replica_verification"] = "sha256"
+    # Legacy transfer settings must not re-enable automatic integrity scans.
+    for key in ("copy_verification", "move_checksum_algorithm", "replica_verification"):
+        safety[key] = "size"
     # Different-content filename collisions always enter the local review queue.
     # Normalize legacy choices so upgrades cannot silently skip or pause a batch.
     safety["conflict_policy"] = "conflict_folder"
     safety["manual_conflict_prompt"] = False
-    if safety["exact_duplicate_policy"] not in {"rename", "conflict_folder", "skip"}:
-        safety["exact_duplicate_policy"] = "rename"
+    safety["exact_duplicate_policy"] = "conflict_folder"
+    safety["manual_duplicate_prompt"] = False
     appendage = str(safety.get("conflict_filename_appendage", "_{number}"))
     safety["conflict_filename_appendage"] = appendage or "_{number}"
     conflict_folder = str(safety.get("conflict_folder", "Conflicts")).strip("/\\")
-    if not conflict_folder or ".." in Path(conflict_folder).parts or Path(conflict_folder).is_absolute():
+    conflict_path = Path(conflict_folder)
+    reserved_folders = {".photocard-organizer", str(normalized["identification"]["folder_name"]).casefold()}
+    if (not conflict_folder or conflict_folder == "." or ".." in conflict_path.parts or conflict_path.is_absolute()
+            or conflict_path.drive or (conflict_path.parts and conflict_path.parts[0].casefold() in reserved_folders)):
         conflict_folder = "Conflicts"
     safety["conflict_folder"] = conflict_folder
     if safety["space_policy"] not in {"block", "fallback_then_block", "continue_below_reserve"}:
@@ -722,6 +764,7 @@ def normalize_config(config: dict[str, Any]) -> dict[str, Any]:
     )
 
     organization = normalized["organization"]
+    organization["checksum_new_baselines"] = False
     brackets = organization["long_exposure_brackets"]
     brackets["enabled"] = bool(brackets.get("enabled", False))
     folder_name = str(

@@ -57,7 +57,9 @@ if (-not $Iscc) {
 
 $SourceDir = Join-Path $DistRoot "PhotoCardOrganizer"
 $Script = Join-Path $PSScriptRoot "PhotoCardOrganizer.iss"
-& $Iscc "/DSourceDir=$SourceDir" "/DAppVersion=$Version" "/DOutputDir=$ArtifactRoot" $Script
+$NumericVersion = & $Python -c "import runpy; version_tuple = runpy.run_path('packaging/build_bundle.py')['version_tuple']; print('.'.join(map(str, version_tuple('$Version'))))"
+if ($LASTEXITCODE -ne 0 -or -not $NumericVersion) { throw "Could not read the numeric Windows version." }
+& $Iscc "/DSourceDir=$SourceDir" "/DAppVersion=$Version" "/DNumericAppVersion=$NumericVersion" "/DOutputDir=$ArtifactRoot" $Script
 if ($LASTEXITCODE -ne 0) { throw "Inno Setup compilation failed." }
 
 $Installer = Join-Path $ArtifactRoot "PhotoCardOrganizer-Installer-$Version.exe"

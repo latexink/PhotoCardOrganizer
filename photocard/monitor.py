@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import copy
+import logging
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 from .digest import run_digest_profile
+from .config import has_active_library
 from .models import ActivityEvent
 from .organizer import Organizer
 from .source_monitor import SourceDiscovery
@@ -77,6 +79,15 @@ class MonitorService:
         with self._scan_lock:
             callback()
 
+    def run_if_idle(self, callback: Callable[[], None]) -> bool:
+        if not self._scan_lock.acquire(blocking=False):
+            return False
+        try:
+            callback()
+            return True
+        finally:
+            self._scan_lock.release()
+
     def _config_snapshot(self) -> dict:
         with self._config_lock:
             return copy.deepcopy(self._config)
@@ -95,8 +106,23 @@ class MonitorService:
             config = self._config_snapshot()
             poll_seconds = max(1.0, float(config["monitor"].get("poll_seconds", 30)))
             if not self._paused.is_set():
+                if not has_active_library(config):
+                    self._send(
+                        ActivityEvent(
+                            "info",
+                            "Background monitoring is waiting for a library destination.",
+                        )
+                    )
+                    self._wake_event.wait(poll_seconds)
+                    self._wake_event.clear()
+                    continue
                 try:
                     with self._scan_lock:
+                        # Configuration and pause state may change while waiting
+                        # for a manual operation to release this lock.
+                        config = self._config_snapshot()
+                        if self._paused.is_set() or self._stop_event.is_set() or not has_active_library(config):
+                            continue
                         results, errors = self._scan_connected_cards(config)
                         hub_imported, hub_errors = self._catch_hubs(
                             config, None
@@ -134,6 +160,7 @@ class MonitorService:
                             force=True,
                         )
                 except Exception as exc:
+                    logging.getLogger(__name__).exception("Background scan failed")
                     self._send(ActivityEvent("error", f"Background scan failed: {exc}"))
             self._wake_event.wait(poll_seconds)
             self._wake_event.clear()

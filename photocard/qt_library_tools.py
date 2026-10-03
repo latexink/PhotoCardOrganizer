@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import logging
 from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QTimer
@@ -25,9 +26,11 @@ class LazyTableModel(QAbstractTableModel):
         self.tooltips = None
 
     def replace_rows(self, rows):
+        logging.getLogger(__name__).debug("Model %x reset started; previous_rows=%d", id(self), len(self.rows))
         self.beginResetModel()
         self.rows = list(rows)
         self.endResetModel()
+        logging.getLogger(__name__).debug("Model %x reset completed; rows=%d", id(self), len(self.rows))
 
     def rowCount(self, parent=QModelIndex()):
         return 0 if parent.isValid() else len(self.rows)
@@ -53,7 +56,19 @@ class LazyTableModel(QAbstractTableModel):
         return None
 
 
-class ReorganizationDialog(QDialog):
+class DiagnosticDialog(QDialog):
+    """Log modal boundaries without inspecting media or observing every UI event."""
+
+    def exec(self):
+        logger = logging.getLogger(__name__)
+        logger.debug("Dialog %s %x opened", type(self).__name__, id(self))
+        try:
+            return super().exec()
+        finally:
+            logger.debug("Dialog %s %x closed", type(self).__name__, id(self))
+
+
+class ReorganizationDialog(DiagnosticDialog):
     def __init__(self, parent, config):
         super().__init__(parent)
         self.config = config
@@ -75,9 +90,11 @@ class ReorganizationDialog(QDialog):
         form = QFormLayout()
         self.preset = QComboBox()
         for name in ORGANIZATION_PRESETS:
-            self.preset.addItem("Separate by media type" if name == "Media folder only" else name, name)
-        self.preset.setCurrentIndex(self.preset.findData("Media folder only"))
-        self.preset.setToolTip("Current detailed rules use this library's saved folder and filename rules. Other presets keep original filenames.")
+            label = {"Media folder only": "Separate by media type", "Use current detailed rules": "Saved rules for this library"}.get(name, name)
+            self.preset.addItem(label, name)
+        self.preset.insertItem(1, "Global rules from Organization", "Use global organization rules")
+        self.preset.setCurrentIndex(self.preset.findData("Use current detailed rules"))
+        self.preset.setToolTip("Saved library rules include its custom overrides. Global rules use the saved Organization settings. Other layouts preserve original filenames.")
         form.addRow("Folder layout", self.preset)
         media_row = QHBoxLayout()
         self.media = {}
@@ -92,8 +109,10 @@ class ReorganizationDialog(QDialog):
         layout.addLayout(form)
         self.preset.currentIndexChanged.connect(self.invalidate)
         self.save_layout = QCheckBox("Save this layout for this library's future imports")
-        self.save_layout.setChecked(True)
+        self.save_layout.setChecked(False)
+        self.save_layout.setEnabled(False)
         self.save_layout.setToolTip("Save library-specific naming rules when processing starts. Other libraries and global organization stay unchanged.")
+        self.preset.currentIndexChanged.connect(self._layout_changed)
         self.cleanup = QCheckBox("Remove folders left empty")
         self.cleanup.setToolTip("Remove only empty media folders found during preview. Library metadata and conflict folders are protected.")
         layout.addWidget(self.save_layout)
@@ -102,7 +121,8 @@ class ReorganizationDialog(QDialog):
         self.baselines.setChecked(bool(config.get("organization", {}).get("checksum_new_baselines", False)))
         self.baselines.setToolTip("Read files without baselines once. Existing checksums are retained without rechecking. Same-filesystem moves otherwise rename files without reading their contents.")
         self.baselines.toggled.connect(self.invalidate)
-        layout.addWidget(self.baselines)
+        self.baselines.setChecked(False)
+        self.baselines.hide()
         self.table = QTableView()
         self.model = LazyTableModel(("CURRENT FILE", "PROPOSED FILE", "ACTION"), values=lambda entry: (
             str(entry.source.relative_to(root)), str(entry.destination.relative_to(root)), entry.status,
@@ -142,6 +162,16 @@ class ReorganizationDialog(QDialog):
         self.timer = QTimer(self)
         self.timer.setInterval(80)
         self.timer.timeout.connect(self.poll)
+
+    def _layout_changed(self):
+        changed = self.preset.currentData() != "Use current detailed rules"
+        self.save_layout.setEnabled(changed)
+        self.save_layout.setChecked(changed)
+        self.save_layout.setText(
+            "Use global rules for this library's future imports"
+            if self.preset.currentData() == "Use global organization rules"
+            else "Save this layout for this library's future imports"
+        )
 
     def invalidate(self):
         self.plan = None
@@ -191,6 +221,7 @@ class ReorganizationDialog(QDialog):
                     candidate, preset, media, cancel_event=self._cancel, progress_callback=progress,
                 )
             except Exception as exc:
+                logging.getLogger(__name__).exception("Reorganization preview failed")
                 self._result["error"] = exc
             finally:
                 self._done.set()
@@ -248,16 +279,17 @@ class ReorganizationDialog(QDialog):
             super().closeEvent(event)
 
 
-class LibraryJobDialog(QDialog):
+class LibraryJobDialog(DiagnosticDialog):
     """Shared preview and confirmation surface for merge and migration jobs."""
 
-    def __init__(self, parent, config, sources, *, mode="merge", backup_root=None, migration_target=None):
+    def __init__(self, parent, config, sources, *, mode="merge", backup_root=None, migration_target=None, resume_plan=None):
         super().__init__(parent)
         self.config = config
         self.sources = sources
         self.mode = mode
         self.backup_root = backup_root
         self.migration_target = migration_target
+        self.resume_plan = resume_plan
         self.plan = None
         self._processing = False
         self._running = False
@@ -265,16 +297,21 @@ class LibraryJobDialog(QDialog):
         self._cancel = threading.Event()
         self._done = threading.Event()
         self._result = {}
-        self.setWindowTitle({"merge": "Merge library", "migrate": "Migrate library", "reorganize": "Consolidate library"}.get(mode, "Library operation"))
+        self.setWindowTitle({"merge": "Merge library", "migrate": "Move library", "reorganize": "Consolidate library"}.get(mode, "Library operation"))
         self.resize(960, 650)
         layout = QVBoxLayout(self)
         label = QLabel(f"Source: {', '.join(str(p) for p in sources)}\nDestination: {migration_target or config['destination_root']}")
         label.setWordWrap(True)
         layout.addWidget(label)
+        self.keep_originals = QCheckBox("Keep originals (copy instead of move)")
+        self.keep_originals.setVisible(mode == "migrate")
+        self.keep_originals.setToolTip("Migration moves the library by default. Enable this to leave a separate copy at its original location.")
+        self.keep_originals.toggled.connect(self._invalidate_preview)
+        layout.addWidget(self.keep_originals)
         self.migration_checksum = QCheckBox("Verify migrated files with SHA-256")
-        self.migration_checksum.setChecked(True)
-        self.migration_checksum.setVisible(mode == "migrate")
-        self.migration_checksum.setToolTip("Recommended for removable drives, network destinations, and archival transfers. Disable for faster size-only verification; originals are still retained. Existing checksum baselines are preserved.")
+        self.migration_checksum.setChecked(False)
+        self.migration_checksum.hide()
+        self.migration_checksum.setToolTip("Optional content checks for removable drives and network transfers. Otherwise same-filesystem moves rename the folder; copies check file size. Existing checksum baselines are preserved.")
         self.migration_checksum.toggled.connect(self._invalidate_preview)
         layout.addWidget(self.migration_checksum)
         self.table = QTableView()
@@ -312,17 +349,31 @@ class LibraryJobDialog(QDialog):
         layout.addLayout(actions)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
+        if resume_plan is not None:
+            self.keep_originals.setChecked(resume_plan.keep_originals)
+            self.migration_checksum.setChecked(resume_plan.migration_checksum)
+            self._result = {"plan": resume_plan}
+            self._done.set()
+            self.poll()
+            self.process.setText("Resume operation")
+            self.preview.setEnabled(False)
+            self.migration_checksum.setEnabled(False)
+            self.keep_originals.setEnabled(False)
+            self.status.setText("Saved plan loaded. Completed files will be checked before remaining work continues.")
 
     def _invalidate_preview(self):
+        self.model.replace_rows([])
         self.plan = None
         self.process.setEnabled(False)
-        self.status.setText("Verification changed; generate a new preview.")
+        self.status.setText("Options changed; generate a new preview.")
 
     def start_preview(self):
         if self._running:
             return
         self._running = True
         self.migration_checksum.setEnabled(False)
+        self.keep_originals.setEnabled(False)
+        keep_originals = self.keep_originals.isChecked()
         migration_checksum = self.migration_checksum.isChecked()
         self.plan = None
         self.model.replace_rows([])
@@ -341,9 +392,11 @@ class LibraryJobDialog(QDialog):
                     backup_root=self.backup_root, migration_target=self.migration_target,
                     cancel_event=self._cancel,
                     migration_checksum=migration_checksum,
+                    keep_originals=keep_originals,
                     progress=lambda current, total, name: setattr(self, "_progress", (current, total, name)),
                 )
             except Exception as exc:
+                logging.getLogger(__name__).exception("Library %s preview failed", self.mode)
                 self._result["error"] = exc
             finally:
                 self._done.set()
@@ -360,9 +413,10 @@ class LibraryJobDialog(QDialog):
             return
         self.timer.stop()
         self._running = False
-        self.migration_checksum.setEnabled(True)
+        self.migration_checksum.setEnabled(self.resume_plan is None)
+        self.keep_originals.setEnabled(self.resume_plan is None)
         self.progress.hide()
-        self.preview.setEnabled(True)
+        self.preview.setEnabled(self.resume_plan is None)
         if self._closing:
             super().reject()
             return
@@ -370,6 +424,7 @@ class LibraryJobDialog(QDialog):
             self._processing = False
             if self._result.get("error"):
                 self.status.setText(f"Completed with an error: {self._result['error']}")
+                self.process.setText("Retry remaining")
                 self.process.setEnabled(True)
                 return
             self.status.setText("Operation completed and transfer records were saved.")
@@ -379,12 +434,14 @@ class LibraryJobDialog(QDialog):
             self.status.setText(str(self._result["error"]))
             return
         self.plan = self._result["plan"]
+        roots = tuple(self.plan.source_roots)
+        migration_checksum = self.plan.migration_checksum
         def source_label(entry):
-            roots = [Path(p).expanduser().resolve() for p in self.sources]
-            roots.append(entry.root)
-            root = next((p for p in roots if p in entry.source.parents), entry.source.parent)
+            # Rendering cells must not probe disks or depend on mutable dialog state.
+            candidates = (*roots, entry.root)
+            root = next((p for p in candidates if p in entry.source.parents), entry.source.parent)
             return str(entry.source.relative_to(root))
-        self.model.values = lambda entry: (source_label(entry), str(entry.destination.relative_to(entry.root)), entry.action, entry.digest[:16] + "..." if entry.digest else "During transfer" if self.mode != "migrate" or self.plan.migration_checksum else "Size only")
+        self.model.values = lambda entry: (source_label(entry), str(entry.destination.relative_to(entry.root)), entry.action, entry.digest[:16] + "..." if entry.digest else "Size / source state")
         self.model.tooltips = lambda entry: (str(entry.source), str(entry.destination), entry.action, entry.digest)
         self.model.replace_rows(self.plan.entries)
         self.status.setText(f"{len(self.plan.entries)} files | {self.plan.changes} changes | preview complete")
@@ -393,13 +450,21 @@ class LibraryJobDialog(QDialog):
     def confirm_process(self):
         if self.plan is None or self._running:
             return
-        verification = "size only (does not detect same-size corruption)" if self.mode == "migrate" and not self.plan.migration_checksum else "SHA-256"
-        answer = QMessageBox.warning(self, "Confirm library operation", f"This will process {self.plan.changes} planned changes. Verification: {verification}. Existing source files are retained unless this is an explicit reorganization. Continue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        verification = "SHA-256 (resumed legacy plan)" if self.plan.migration_checksum else "completion, size and source state"
+        if self.mode == "migrate" and not self.plan.keep_originals:
+            effect = "MOVE the library to its new location. The old location will be removed. On the same filesystem, the folder is renamed without copying its contents."
+        elif self.mode == "reorganize":
+            effect = "Move files into the selected organization."
+        else:
+            effect = "Copy files; originals will be retained."
+        answer = QMessageBox.warning(self, "Confirm library operation", f"{self.plan.changes} planned changes.\n{effect}\nContent verification when copying: {verification}.\nContinue?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
         if answer != QMessageBox.StandardButton.Yes:
             return
+        self.resume_plan = self.plan
         self._done.clear()
         self._processing = True
         self.migration_checksum.setEnabled(False)
+        self.keep_originals.setEnabled(False)
         self._running = True
         self._cancel.clear()
         self._result = {}
@@ -414,6 +479,7 @@ class LibraryJobDialog(QDialog):
                     progress=lambda current, total, name: setattr(self, "_progress", (current, total, name)),
                 )
             except Exception as exc:
+                logging.getLogger(__name__).exception("Library %s execution failed", self.mode)
                 self._result["error"] = exc
             finally:
                 self._done.set()

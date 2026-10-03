@@ -21,9 +21,9 @@ no-overwrite renames when the source and destination share a filesystem.
   folders without repeatedly copying unchanged files.
 - Preserve exact duplicates and filename conflicts for paged, side-by-side review.
 - Reorganize in place with an optional detailed preview and a final confirmation.
-- Merge a library by content and migrate to a new folder with verified copying.
+- Combine libraries using saved folder rules; preserve destination conflicts for review.
 - Export media by type and capture-date range, with optional sidecars and groups.
-- Keep matching portable and local per-session records with cryptographic checksums.
+- Keep matching portable and local per-session records without redundant content reads.
 - Verify library integrity against stored baselines, or create missing checksums.
 - Restore changed or missing files from checksum-matched backups while preserving damaged originals.
 - Give each library its own folder and filename rules, or inherit global settings.
@@ -37,6 +37,26 @@ no-overwrite renames when the source and destination share a filesystem.
 - [Changelog](CHANGELOG.md)
 - [Roadmap](ROADMAP.md)
 - [Release build and verification](PACKAGING.md)
+
+### Current Source Preview
+
+`0.11.3.dev2` groups the interface into Libraries, Sources, Transfers, Settings
+and Help. Libraries offers Add media, Export, Manage library and Check files.
+Checksums are manual: check saved records, create missing records, or compare
+with a selected connected backup. Ordinary transfers check completion, size and
+source changes; those checks do not detect same-size corruption. Required backup
+and history failures still retain move sources. Different filenames are not
+globally hash-deduplicated, and conflicts are preserved for review.
+
+The local preview installer passed packaged startup and Defender scans, but
+Sandbox Application Control blocked installation testing. See the
+[validation record](docs/VALIDATION-0.11.3.dev2.md). This is not a published
+release or a confirmed fix for the native
+0.11.2 crashes. Existing release downloads and the dev1 diagnostic package remain
+unchanged. The older detailed workflow descriptions below describe the published
+release; use the preview guide and changelog for the updated behavior.
+
+[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev2-User-Guide.pdf)
 
 Version 0.11.2 is an unsigned testing release. Use independent backups.
 

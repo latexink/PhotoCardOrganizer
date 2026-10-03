@@ -14,6 +14,7 @@ from reportlab.platypus import (
     Flowable,
     Frame,
     KeepTogether,
+    Image,
     PageBreak,
     PageTemplate,
     Paragraph,
@@ -164,9 +165,7 @@ class InterfaceMap(Flowable):
         c.setFillColor(WHITE)
         c.drawString(18, self.height - 39, "PHOTO CARD ORGANIZER")
         sections = [
-            ("WORKSPACE", ["Dashboard", "Libraries", "Cards and drives", "Import or merge", "Digest inboxes"]),
-            ("LIBRARY TOOLS", ["Organization", "Travel sync", "Library export", "Integrity", "Conflict review", "Activity"]),
-            ("SETTINGS", ["Safety and location", "General options", "Help & about"]),
+            ("MAIN AREAS", ["Libraries", "Sources", "Transfers", "Settings", "Help"]),
         ]
         y = self.height - 65
         for section, items in sections:
@@ -175,13 +174,13 @@ class InterfaceMap(Flowable):
             c.drawString(18, y + 2, section)
             y -= 13
             for item in items:
-                if item == "Dashboard":
+                if item == "Libraries":
                     c.setFillColor(colors.HexColor("#24466A"))
                     c.roundRect(14, y - 5, 116, 18, 3, fill=1, stroke=0)
                     c.setFillColor(CYAN)
                     c.rect(14, y - 5, 3, 18, fill=1, stroke=0)
-                c.setFillColor(WHITE if item == "Dashboard" else colors.HexColor("#C6D0E1"))
-                c.setFont("Helvetica-Bold" if item == "Dashboard" else "Helvetica", 6.6)
+                c.setFillColor(WHITE if item == "Libraries" else colors.HexColor("#C6D0E1"))
+                c.setFont("Helvetica-Bold" if item == "Libraries" else "Helvetica", 6.6)
                 c.drawString(23, y + 1, item)
                 y -= 15
             y -= 3
@@ -189,7 +188,7 @@ class InterfaceMap(Flowable):
         c.roundRect(151, 26, self.width - 163, self.height - 52, 5, fill=1, stroke=0)
         c.setFillColor(WHITE)
         c.setFont("Helvetica-Bold", 16)
-        c.drawString(170, self.height - 52, "Dashboard")
+        c.drawString(170, self.height - 52, "Libraries")
         c.setFillColor(colors.HexColor("#34445F"))
         c.roundRect(170, self.height - 110, 140, 42, 4, fill=1, stroke=0)
         c.roundRect(322, self.height - 110, 140, 42, 4, fill=1, stroke=0)
@@ -451,6 +450,15 @@ def chapter(title: str, intro: str = "") -> list:
 
 def build_story() -> list:
     story: list = []
+    diagnostic_pages: list = []
+    if ".dev" in VERSION:
+        diagnostic_pages += [p(f"Source preview {VERSION}", "h1"),
+                  p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
+                  p("Extract the diagnostic ZIP and use PhotoCardOrganizer-Diagnostic.bat, not the application executable directly. The launcher isolates settings and history and starts without configured libraries or automatic card discovery."),
+                  p("This source preview simplifies navigation and makes checksums manual under Libraries > Check files. Move library defaults to MOVE; Keep originals selects copying. Same-filesystem moves use renames; cross-filesystem moves copy before removing sources. The older diagnostic package remains unchanged. Native crashes are not confirmed fixed."),
+                  p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
+                  p("The remaining manual describes released workflows; where it describes migration as copy-only or lists an installer, the diagnostic-package instructions above take precedence. No installer is included in this preview."),
+                  PageBreak()]
     story.extend(
         [
             Spacer(1, 1.0 * inch),
@@ -483,6 +491,7 @@ def build_story() -> list:
         ]
     )
 
+    story += diagnostic_pages
     story += chapter(
         "Start here",
         "Photo Card Organizer monitors identified camera cards and ordinary folders, reads available metadata, and places media into a configurable library. This guide follows the normal setup sequence and highlights every action that can modify source media.",
@@ -491,7 +500,7 @@ def build_story() -> list:
     story += [
         callout(
             "The safety promise",
-            "Copy leaves source files untouched. Move is performed as copy, cryptographic checksum verification, required backup verification, transfer-log writes, and only then source deletion.",
+            "Copy leaves source files untouched. Cross-filesystem Move uses staged copying, completion/size/source-change checks, required backups and transfer records before source deletion. Same-filesystem reorganization uses recorded no-overwrite renames. Checksums are manual library actions.",
             "safe",
         ),
         Spacer(1, 12),
@@ -552,25 +561,20 @@ def build_story() -> list:
     ]
 
     story += chapter("2. Find your way around")
-    story += [InterfaceMap(), Spacer(1, 8)]
+    story += [Image(str(ROOT / "assets/screenshots/libraries.png"), width=448, height=280), Spacer(1, 8)]
     story += [
         data_table(
             ["Menu section", "Page", "Purpose"],
             [
-                ["Workspace", "Dashboard", "Choose an import destination, select connected cards, then import. Refresh, scan, and pause monitoring are separate controls."],
-                ["Workspace", "Libraries", "Set up destinations, import or merge, reorganize existing folders, export media, and maintain metadata."],
-                ["Workspace", "Cards and drives", "Guided onboarding, offline profiles, identity folders, and connection status."],
-                ["Workspace", "Import or merge", "Follow Source, Destination, and Review steps before adding files from another folder or library."],
-                ["Workspace", "Digest inboxes", "Retain incoming folders, run or monitor imports, and review per-file state."],
-                ["Library tools", "Organization", "Extensions, folder levels, and filename rules for photos, RAW, videos, sidecars, and records."],
-                ["Library tools", "Travel sync", "Direct laptop libraries and publish/catch hubs on SMB, USB, or synchronized folders."],
-                ["Library tools", "Library export", "Select captures or groups and make verified editing exports."],
-                ["Library tools", "Integrity", "Compare files with saved checksums, establish missing baselines, and open reports."],
-                ["Library tools", "Conflict review", "Search, compare files side by side, and bulk-update review status."],
-                ["Library tools", "Activity", "Transfer, warning, retry, conflict, and error events."],
-                ["Settings", "Safety and location", "Verification, conflicts, space reserves, retries, backups, history, and place names."],
-                ["Settings", "General options", "Connected-card check interval, portable settings import/export, and installation maintenance."],
-                ["Settings", "Help & about", "PDF manual, changelog, version, and project credits."],
+                ["Libraries", "Libraries / Add media", "Set up destinations; add folders or combine libraries through reviewed operations."],
+                ["Libraries", "Export / Check files", "Export selected media; manually check saved checksums, create records or compare a backup."],
+                ["Sources", "Cards & drives", "Guided onboarding, offline profiles, identity folders and connection status."],
+                ["Sources", "Watched folders / Travel", "Incoming folders and laptop/shared-folder transfers using mounted destinations."],
+                ["Transfers", "Overview / History", "Connected sources, current activity and error events."],
+                ["Transfers", "Conflicts", "Search, compare preserved files side by side and update review status."],
+                ["Settings", "Rules / Policies", "Default organization, extensions, backups, space reserves, history and place names."],
+                ["Settings", "General", "Monitoring interval, portable settings and installation maintenance."],
+                ["Help", "Help & about", "PDF manual, changelog, diagnostics, version and project credits."],
             ],
             [1.1 * inch, 1.35 * inch, 4.6 * inch],
         ),
@@ -587,7 +591,7 @@ def build_story() -> list:
         [
             ("Card identity", "Choose the card or drive root, display name, stable card ID, optional camera-name override, and media source folders such as DCIM. An existing identity is detected and loaded."),
             ("Destination", "Choose a named primary library, optional Wedding, Client Shoot, Trip, or custom subfolder route, and transfer method. Copy is recommended for initial use."),
-            ("Organization and safety", "Choose a folder preset or retain detailed rules, enable media classes, select copy verification and move checksum, set destination reserves, and optionally enable online place names."),
+            ("Organization and safety", "Choose a folder preset or retain detailed rules, enable media classes, set destination reserves, and optionally enable online place names. Checksums are a separate manual action."),
             ("Review", "Read the concise source, destination, operation, media, camera, verification, organization, and backup summary. Nothing is written or scanned until the <b>Confirm initial scan and import</b> prompt is accepted."),
         ]
     )
@@ -595,7 +599,7 @@ def build_story() -> list:
         Spacer(1, 7),
         callout(
             "Move receives another warning",
-            "After the initial review, Move displays a separate confirmation naming the checksum algorithm, required logs, and required backup destinations before transfer work begins.",
+            "After the initial review, Move displays a separate confirmation explaining source removal, required logs and backups before transfer work begins.",
             "warn",
         ),
         p("Identity layout", "h2"),
@@ -668,7 +672,7 @@ def build_story() -> list:
         [
             ("Source", "Select the source folder, accept or edit its source name, and choose whether the scan includes subfolders. Folder selection does not open another dialog or begin analysis."),
             ("Destination", "Choose the receiving library, optional import grouping, Copy or verified Move, enabled media types, folder layout, and optional camera override. Event/project fields appear only for a named grouping. Analyze source folders only when a read-only editable mapping would be useful."),
-            ("Review", "Read the exact scan scope, destination, operation, media, organization, verification, and backup plan. Save settings + Import opens the final confirmation, saves the reviewed settings, and only then starts the scan; Move then receives the separate checksum-and-deletion warning."),
+            ("Review", "Read the scan scope, destination, copy/move operation, organization and backup plan. Save settings + Import saves the reviewed settings after final confirmation. Move receives an additional source-removal warning."),
         ]
     )
     story += [
@@ -689,22 +693,22 @@ def build_story() -> list:
         p("Supported file classes", "h2"),
         p("JPEG/photos, RAW, video, and sidecar files each have an enabled switch, customizable extension list, one to twelve independent folder levels, and a filename template. Add or remove levels in Organization, enter a fixed folder name directly, disable an unneeded class, or set a level to None where no directory segment is desired."),
         p("First backup-library test", "h2"),
-        p("Use an empty destination, Copy, SHA-256 copy verification, and recursive scanning. Keep Camera override empty so each file can use its own EXIF make/model. Different-content filename collisions are preserved automatically in the local conflict-review folder. Exact-content duplicates follow the separately configured duplicate policy; a second run of the same retained source should report no new imports. The current manifest tracks stable sources and expected destination collisions, but is not yet a whole-library fingerprint catalog for identical media arriving through unrelated historical paths."),
+        p("Use an empty destination, Copy and recursive scanning for the first test. Keep Camera override empty to use each file's EXIF make/model. Exact-content and different-content destination conflicts are preserved locally for review. The app does not scan a library for identical content under unrelated filenames. Manual Check files can compare checksums afterward."),
         PageBreak(),
     ]
 
     story += chapter("Merge and migrate libraries")
     story += [
         p("Merge library", "h2"),
-        p("In Libraries, select the receiving library and choose <b>Merge library</b>. Select one source folder or managed library, save any pending settings, then choose Preview changes. The preview hashes enabled media across both locations, uses saved organization rules for incoming files, and shows full source/destination paths. Existing destination media keeps its layout."),
-        p("Identical content within a media class has one destination even when filenames differ. Different-content name collisions go to the configured Conflicts folder with the organized hierarchy retained. Source media stays in place. Sidecars are compared separately; distinct editing metadata is preserved. Repeat the workflow for additional sources."),
-        p("Confirm and process copies unique files, verifies SHA-256, and saves portable integrity baselines plus local session records. Baseline mismatches are reported without replacing the old checksum. Cancel waits for the current file before releasing the library back to monitoring."),
+        p("In Libraries, select the receiving library and choose <b>Add media > Combine another library</b>. Choose the source, save pending settings and review the proposed paths. Saved organization rules apply to incoming files; existing destination media keeps its layout. Content comparisons occur only on actual destination conflicts, not throughout the library."),
+        p("Different filenames remain separate files. Both exact-content and different-content destination conflicts are preserved in the local Conflicts folder with the intended hierarchy. Source media stays in place for copy operations. Recorded source identity helps a repeated merge skip completed copies without hashing again."),
+        p("Confirm and process uses staged copying, size/source-change checks and durable records. Check files provides separate checksum creation and verification; ordinary merging does not automatically create baselines. Cancel stops further work and keeps completed records for retry."),
         p("Migrate library", "h2"),
-        p("Select the library and choose <b>Migrate library</b>, then choose an empty destination folder. Close other clients using either location. Preview includes media, library identity, transfer history and index files. After verified copying, the destination index paths are updated and the saved library location changes. The default library selection is preserved."),
-        p("<b>Verify migrated files with SHA-256</b> is enabled by default and is recommended for removable drives, network destinations, and archival transfers. Disable it for faster size-only verification when you will retain the original library. Size checks detect truncation but cannot detect same-size corruption. Existing checksum baselines are preserved, and transfer records identify the verification mode. Changing this option requires a new preview before processing."),
-        callout("Originals remain available", "Migration retains the original library. Inspect the destination before any manual cleanup. On an interrupted migration, the original location remains active. Retry within the open dialog after resolving the error; after restarting, select a new empty destination and retain the partial copy until reviewed.", "warn"),
+        p("Select the library and choose <b>Manage library > Move library</b>, then choose an empty destination. Close other clients using either location. Move is the default; Keep originals makes a copy instead. Compatible same-filesystem moves rename the library; other transfers use staged copies and source-state checks. Existing checksum records are retained."),
+        p("Ordinary migration does not hash content. Size checks detect truncation but cannot detect same-size corruption. Use Check files to create or compare checksums when needed. Resumed legacy plans retain their original verification contract."),
+        callout("Interrupted work", "Use Resume interrupted operation with the original source and destination connected. Do not manually delete partial destinations or recovery records. Sources are removed only after required copies, backups and history succeed. Recorded copy identities and source mappings follow library moves without content scans; a changed destination or backup retains the source. Packaged lifecycle and physical-drive tests are still outstanding for this source preview.", "warn"),
         p("Scope of this preview", "h2"),
-        p("Merge and migration are dedicated Libraries actions. They do not yet replace the older Import or merge wizard. Multi-source consolidation with a clone selector, media-routing controls for general imports, automatic repair, and scheduled integrity checks remain planned. Integrity catalogs detect changes; recovery requires an independent good copy."),
+        p("Add media offers folder import and library combination. Manage library contains occasional maintenance operations. Integrity catalogs detect changes; recovery requires an independent copy matching a trusted saved checksum. Mounted network folders are not a new authenticated sync service."),
         PageBreak(),
     ]
 
@@ -717,18 +721,18 @@ def build_story() -> list:
     ])
     story += [
         callout("Preserve an independent backup", "Same-filesystem changes use durable no-overwrite renames without reading media content again. Cross-filesystem moves use a verified destination copy before deleting the original. Required backups and local transfer records must succeed. File changes since planning are deferred; failed catalog updates retain a resumable intent. Existing filenames are never overwritten, including exact duplicates: conflicts are kept in the configured organized conflict folder for review.", "warn"),
-        p("The fixed plan prevents generated files from becoming new inputs. Metadata, identity, and conflict folders are excluded. Local catalog paths follow moved files; historical session logs remain append-only. Compatible folders can move as one rename only when every member is known media; an unrelated file keeps the operation at the individual-file level. Optional checksum creation reads only files with no baseline. On failure, review Activity and retry; do not manually remove a pending rename intent."),
+        p("The fixed plan prevents generated files from becoming new inputs. Metadata, identity and conflict folders are excluded. Saved checksum paths follow moved files; historical session logs remain append-only. Compatible folders can move as one rename only when every member is known media. Checksum creation is separate under Check files. On failure, review Transfers > History and retry; do not remove a pending rename intent."),
         p("Location rules use cached place names during preview; no online requests are made. Missing capture dates use file modification time. Use current detailed rules applies saved folder and filename templates, including library overrides; other presets retain original filenames."),
         PageBreak(),
     ]
 
     story += chapter("Integrity checks")
     story += [
-        p("Verify whole library starts a complete check immediately. Select changed or missing results, then Restore selected from backup. Recovery checks configured enabled backup roots at the same relative file path and accepts only bytes matching the original saved checksum. A checksum detects damage; it cannot reconstruct it without a good copy."),
+        p("Open Libraries > Check files. Select Whole library or Selected files, then Check saved checksums. Select changed or missing results to Restore selected from backup. Recovery accepts only bytes matching the saved checksum and preserves damaged originals. A checksum detects damage; it cannot reconstruct a file without a good copy."),
         p("Recovery preserves damaged originals under .photocard-organizer/integrity/recovery/OPERATION/original and writes matching local and portable journals before replacement. After an interruption, the staged copy and original remain available; rerun verification and recovery with the backup connected. Never remove recovery folders until you have reviewed their contents."),
         p("Libraries > Edit selected > Organization settings offers per-media folder and filename overrides. Unchecked media inherit the global Organization settings. Saving settings does not move existing media; use Reorganize library and its final confirmation."),
-        p("Safety > Backups and clones supports multiple destinations. Mark removable or network destinations appropriately: missing folders are reported, not created on an absent mount. Required failures retain move sources. Reconnect and retry the import. Keep old version and replace preserves earlier backup files in Conflicts/Replica existing; these are not automatically pruned. Recovery from an archived version requires configuring its containing archive root as another backup destination."),
-        p("Open Integrity or choose Verify integrity from Libraries. Select a library and optionally select individual files, then use Verify library. Each checked file is read once and compared with its saved checksum. Results distinguish Verified, Changed; baseline retained, Missing, and No baseline. A report is saved in the library and matching local application state."),
+        p("Settings > Backups & policies supports multiple destinations. Missing removable or network mounts are reported, not created. Required failures retain move sources. Backup conflicts keep the backup unchanged and preserve the incoming version locally. Marking reviewed does not finish a blocked transfer. Before retrying, the intended backup path must be empty or contain the accepted incoming version. Preserve the older version separately if replacing it. Unchanged unresolved conflicts do not create another review copy or repeat checksum reads."),
+        p("Compare with backup uses a chosen configured destination and reports Matches backup, Different from backup, Missing from backup or Missing from library. It does not change media or choose an authoritative copy. Differences alone do not establish which version is damaged. Reports are saved locally and in the library."),
         p("Create missing checksums records the current contents only for files without a baseline. It never replaces an existing checksum and cannot prove that a new baseline is an original good copy. Cancel stops after the current read chunk and retains completed results in the report."),
         callout("Baseline records", "The portable catalog is stored at .photocard-organizer/integrity/catalog.sqlite3. Existing root-level integrity.sqlite3 catalogs are copied atomically into this location when first written and the older file remains as a rollback copy. Do not compress the live SQLite catalog or journal files.", "info"),
         PageBreak(),
@@ -754,7 +758,7 @@ def build_story() -> list:
         ),
         callout(
             "Verified move is a deliberate cleanup action",
-            "Move requires the normal review and a second warning. A source is removed only after its primary destination, every required backup, cryptographic checksum, and required transfer records succeed. Any failure leaves that source in place for retry.",
+            "Move requires review and a second warning. A source is removed only after its primary copy, completion/size/source-change checks, required backups and required transfer records succeed. Any failure retains the source for retry.",
             "warn",
         ),
         p("Cloud and shared folders", "h2"),
@@ -768,10 +772,10 @@ def build_story() -> list:
     story += [
         p("Copy is the default globally and per card. Existing destination files are not overwritten. The source remains unchanged even if a backup, log, location lookup, or metadata field fails."),
         p("Move", "h2"),
-        Workflow(["Copy", "Checksum", "Verify required backups", "Write required logs", "Delete source"]),
+        Workflow(["Stage copy", "Size/source checks", "Required backups", "Required logs", "Remove source"]),
         callout(
             "Deletion gate",
-            "The source is retained whenever checksum verification, required replica verification, portable history, or required local history is incomplete. A verified primary copy may remain for safe retry without being duplicated.",
+            "The source is retained whenever completion checks, required backups, portable history or required local history are incomplete. A recorded primary copy can be reused on retry if its file identity and source state remain unchanged.",
             "safe",
         ),
         p("If the computer loses power during a temporary copy, the source remains. On the next write to that folder, the app removes abandoned partial files owned by the same client; it does not remove another client's in-progress partials."),
@@ -779,9 +783,9 @@ def build_story() -> list:
         data_table(
             ["Setting", "Choices", "Notes"],
             [
-                ["Copy verification", "Size, SHA-256, SHA-512, BLAKE2b", "Size is faster; cryptographic choices compare content."],
-                ["Move checksum", "SHA-256, SHA-512, BLAKE2b", "Cryptographic verification is mandatory for source deletion."],
-                ["Replica verification", "SHA-256, SHA-512, BLAKE2b", "Required replicas must verify before completion."],
+                ["Ordinary transfers", "Completion / size / source state", "No automatic checksum read; same-size corruption is not detected."],
+                ["Manual checks", "Saved checksum / backup comparison", "Run explicitly under Libraries > Check files."],
+                ["New checksum records", "Missing baselines only", "Records current contents, not proof of historical health."],
             ],
             [1.45 * inch, 2.1 * inch, 3.5 * inch],
         ),
@@ -791,7 +795,7 @@ def build_story() -> list:
 
     story += chapter("8. Backups, clones, and free space")
     story += [
-        p("Add multiple destinations under Safety and location > Backups and clones. Each destination can be enabled, required or optional, configured to receive matching history, and assigned a replica conflict policy."),
+        p("Add destinations under Settings > Backups & policies > Backups and clones. Each can be enabled, required or optional and receive matching history. Conflicting backup files remain unchanged; the incoming version is preserved locally for review."),
         data_table(
             ["Destination type", "Import behavior", "Move behavior"],
             [
@@ -814,14 +818,13 @@ def build_story() -> list:
 
     story += chapter("9. Duplicates and filename conflicts")
     story += [
-        p("Before placement, same-name files are compared by content. A different-content collision never pauses the active task: the existing file stays in place, the incoming file is copied below the local conflict-review folder, and both are queued for review. Exact-content duplicates retain a separate configurable policy."),
+        p("Actual destination conflicts are compared by content rather than guessing from filenames or sizes. Both exact-content and different-content collisions are preserved locally for later review, with no conflict prompt during the transfer. Different filenames are not globally hash-deduplicated."),
         data_table(
             ["Policy", "Result"],
             [
                 ["Different content", "Always place the incoming file below the configured local conflict-review root while retaining the normal media/date/camera hierarchy."],
-                ["Exact duplicate: rename", "Keep the organized destination and append a configurable value such as _2, (2), or a custom {number} pattern."],
-                ["Exact duplicate: conflict folder", "Preserve the second copy below the configured conflict-review root."],
-                ["Exact duplicate: skip", "Leave the source and existing destination unchanged and record no new imported copy."],
+                ["Exact-content collision", "Preserve the incoming copy below the same organized conflict-review root; never automatically delete it."],
+                ["Repeated conflict name", "Append _2, (2), or the configured {number} pattern to retain every version."],
             ],
             [1.45 * inch, 5.6 * inch],
         ),
@@ -829,7 +832,7 @@ def build_story() -> list:
         p("Preserved conflicts are queued in Conflict review. SQL-backed search and fixed 200-record pages keep very large histories bounded. Select one row for side-by-side paths, sizes, modification times, and supported image previews. Multi-select routine groups to mark their review status together; this status change never modifies either media file. RAW or video formats without a preview still show details and can be opened externally."),
         callout(
             "Filename conflicts do not interrupt",
-            "Different-content filename collisions are always preserved for later review. Other configured safety conditions, including exact duplicates, low space, and file errors, may still request a decision during a manual import.",
+            "Both exact and different filename conflicts are preserved for later review. Low-space or file errors may still require action. Required backup conflicts retain move sources until resolved; marking a conflict reviewed does not delete or replace files.",
         ),
         PageBreak(),
     ]
@@ -895,7 +898,7 @@ def build_story() -> list:
             ("Filter media and dates", "Choose All media, Photos, RAW, Videos, or Sidecars. Enable Capture date range for inclusive start/end dates; missing capture metadata falls back to file modification time. Include matching sidecars is optional. For example, select Videos and the required dates, then Select all matching."),
             ("Review detected sets", "Adjust the bracket/burst and interval thresholds, then review camera, capture time, rating, media types, and group labels."),
             ("Select work", "Select one or more captures, Select all matching, or expand a detected group. Group expansion stays inside the active media/date filters. Optional group subfolders keep bracketed and interval sequences together."),
-            ("Export", "Choose a separate editing folder and review the confirmation, including group folders, conflict suffix, and free-space reserve. Export is always copy-only, uses SHA-256 verification, reuses exact existing files, preserves different-content filename collisions with a suffix, and writes a JSON Lines record under .photocard-organizer/export-sessions."),
+            ("Export", "Choose a separate editing folder and review the confirmation, group folders, conflict suffix and space reserve. Export is copy-only with size/source-change checks. Actual filename conflicts are compared; matching exports may be reused and different versions receive a suffix. Records are written under .photocard-organizer/export-sessions."),
         ]
     )
     story += [
@@ -998,6 +1001,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.11.3.dev2", "Source preview", "Five main areas, manual checksum/backup comparison, local conflicts and reduced transfer reads. Not a published installer or confirmed crash fix."],
                 ["0.11.2", "2026-09-16", "On-demand library sizes, drive capacity visibility, and optional SHA-256 migration verification."],
                 ["0.11.1", "2026-09-13", "Atomic catalog startup, immediate first monitoring scans, and Linux CI corrections."],
                 ["0.11.0", "2026-09-13", "Verified backup recovery, library-specific naming rules, removable backup safeguards, Integrity action fixes, and schema-6 settings migration."],

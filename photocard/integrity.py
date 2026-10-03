@@ -138,6 +138,24 @@ class IntegrityCatalog:
                              checked_at=datetime.now(timezone.utc).isoformat()))
             connection.execute("UPDATE baselines SET path=? WHERE path=?", (new, old))
 
+    def relocate_to(self, source: Path, destination: Path, target: IntegrityCatalog):
+        """Carry a saved baseline between libraries without re-reading media."""
+        if self.root == target.root:
+            return self.relocate(source, destination)
+        old = checked_path(source).relative_to(self.root).as_posix()
+        if not (self.path.exists() or self.legacy_path.exists()):
+            return
+        with closing(self._connect()) as connection:
+            baseline = connection.execute("SELECT algorithm,digest FROM baselines WHERE path=?", (old,)).fetchone()
+            if baseline is None:
+                return
+            # Write the destination first. An interruption retains the old record.
+            target.record(destination, baseline[1], baseline[0], verified=False)
+            with connection:
+                self._audit(dict(action="relocate to library", source=old, path=str(destination),
+                                 algorithm=baseline[0], digest=baseline[1]))
+                connection.execute("DELETE FROM baselines WHERE path=? AND algorithm=? AND digest=?", (old, *baseline))
+
     def run_library_check(self, config, *, establish=False, cancel_event=None, progress=None, paths=None):
         from .library_jobs import walk_files
         if not self.root.is_dir():
@@ -196,10 +214,68 @@ class IntegrityCatalog:
             results.append((str(path), status))
             if progress:
                 progress(index + 1, len(selected), str(path))
+        self._save_report("create missing baselines" if establish else "verify", len(selected), results)
+        return results
+
+    def compare_backup(self, config, backup_root, *, paths=None, cancel_event=None, progress=None):
+        from .library_jobs import walk_files
+        backup = checked_path(Path(backup_root))
+        if not self.root.is_dir() or not backup.is_dir():
+            raise ValueError("Library or backup is unavailable; reconnect the drive before comparing")
+        if self.root == backup or self.root in backup.parents or backup in self.root.parents:
+            raise ValueError("Choose a backup separate from the selected library")
+        self.cancelled = False
+        if paths is None:
+            selected = set()
+            for root in (self.root, backup):
+                for path in walk_files(root, config, include_conflicts=True):
+                    if cancel_event and cancel_event.is_set():
+                        self.cancelled = True
+                        break
+                    selected.add(self.root / path.relative_to(root))
+                if self.cancelled:
+                    break
+            if not self.cancelled:
+                selected.update(self.root / name for name in self.records())
+            paths = sorted(selected)
+        selected = list(paths)
+        results = []
+        for index, path in enumerate(selected):
+            if cancel_event and cancel_event.is_set():
+                self.cancelled = True
+                break
+            try:
+                path = checked_path(Path(path))
+                counterpart = checked_path(backup / path.relative_to(self.root))
+                if not path.is_file():
+                    status = "Missing from library"
+                elif not counterpart.is_file():
+                    status = "Missing from backup"
+                else:
+                    before = path.stat(), counterpart.stat()
+                    if before[0].st_size != before[1].st_size:
+                        status = "Different from backup"
+                    else:
+                        matches = checksum(path, cancel_event=cancel_event) == checksum(counterpart, cancel_event=cancel_event)
+                        after = path.stat(), counterpart.stat()
+                        signature = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+                        status = ("Matches backup" if matches else "Different from backup") if tuple(map(signature, before)) == tuple(map(signature, after)) else "Changed during comparison"
+            except InterruptedError:
+                self.cancelled = True
+                break
+            except (OSError, ValueError) as exc:
+                status = f"Error: {exc}"
+            results.append((str(path), status))
+            if progress:
+                progress(index + 1, len(selected), str(path))
+        self._save_report("compare with backup", len(selected), results, backup=str(backup))
+        return results
+
+    def _save_report(self, operation, count, results, **details):
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         name = f"{stamp}-{uuid.uuid4().hex}.json"
-        report = {"schema": 1, "library": str(self.root), "operation": "create missing baselines" if establish else "verify",
-                  "cancelled": self.cancelled, "files_planned": len(selected), "results": results}
+        report = {"schema": 1, "library": str(self.root), "operation": operation,
+                  "cancelled": self.cancelled, "files_planned": count, "results": results, **details}
         for directory in (self.directory / "reports", self.local_path.parent / "reports"):
             path = checked_path(directory / name)
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -208,4 +284,3 @@ class IntegrityCatalog:
                 handle.flush()
                 os.fsync(handle.fileno())
         self.last_report = self.directory / "reports" / name
-        return results

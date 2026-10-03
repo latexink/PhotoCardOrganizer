@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.3.dev2 - Testing preview, 2026-10-03
+
+- Consolidated navigation into Libraries, Sources, Transfers, Settings and Help, with named tool tabs and fewer library action buttons.
+- Added manual backup comparison to Check files, one whole-library/selected-files scope, cancellation and portable/local reports. Existing checksum records and verified recovery remain available.
+- Ordinary imports, copies, moves, exports and shared-folder publications use completion, size and source-change checks instead of automatic content hashes. Size checks cannot detect same-size corruption; use manual checks for that.
+- Exact-content comparisons are confined to actual destination conflicts. Imports and library jobs preserve collisions for local review; shared-folder publication no longer replaces conflicting remote files.
+- Added durable copy receipts and safer retry/source cleanup, while retaining staged writes, no-overwrite commits, required backup retention and saved checksum-path relocation.
+- Relocated proven copy identities and origin mappings across library moves, with target-first records and interrupted-finalization recovery. Stale receipts are not refreshed into valid copies.
+- Kept original destination/backup evidence through finalization and index updates; concurrent changes retain move sources. Older indexes without receipt tables remain readable.
+- Unchanged unresolved backup conflicts retry without new checksum reads or review copies, even after marking reviewed. Backup review now explicitly warns that transfer completion still requires resolution and retry.
+- Added numeric Windows installer metadata for preview versions while retaining the visible version suffix.
+- Local installer built; packaged startup and Defender scans passed. Sandbox Application Control blocked lifecycle testing before installation. See the [validation record](docs/VALIDATION-0.11.3.dev2.md) for remaining gaps.
+- Existing diagnostic dev1 artifacts remain unchanged. This is not a confirmed native-crash fix or a published release.
+
+## 0.11.3.dev1 - Diagnostic preview, 2026-09-26
+
+- Private diagnostic package, not a confirmed fix for the 0.11.2 native crashes.
+- Includes bounded error/Qt logs, optional dialog/model tracing, native Python traces, preserved crash evidence, and unclean-session notices.
+- Includes pending migration/recovery work: move by default, optional keep-originals, durable job progress and resume, and reduced same-filesystem I/O.
+- Includes pending preview invalidation, saved-rule selection, and forget-library improvements. This is NOT a logging-only rebuild.
+- Portable launcher isolates settings and history, starts without configured libraries or automatic card detection, and offers opt-in local debugger capture. Use disposable media only.
+
+
 ## 0.11.2 - 2026-09-16
 
 - Added cached, on-demand library size and drive total columns beside free space in Libraries. Measuring a library reads directory metadata in the background without reading media contents or repeatedly waking idle drives.

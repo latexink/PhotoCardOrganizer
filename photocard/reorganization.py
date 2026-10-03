@@ -18,6 +18,7 @@ from .qt_common import preset_folder_segments
 from .atomic_copy import same_filesystem, relocate_without_overwrite
 from .integrity import IntegrityCatalog, checksum, checked_path
 from .config import library_media_rule
+from .diagnostics import traced_operation
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class ReorganizationPlan:
         return sum(entry.status != "Already organized" for entry in self.entries)
 
 
+@traced_operation
 def build_reorganization_plan(config: dict, preset: str, media: set[str], *,
                               cancel_event: threading.Event | None = None,
                               progress_callback=None) -> ReorganizationPlan:
@@ -53,7 +55,11 @@ def build_reorganization_plan(config: dict, preset: str, media: set[str], *,
     read_library_metadata(root)
     if not media:
         raise ValueError("Select at least one media type.")
-    effective_rules = {kind: library_media_rule(candidate, root, kind) for kind in candidate["media_rules"]}
+    use_global_rules = preset == "Use global organization rules"
+    effective_rules = {
+        kind: copy.deepcopy(rule) if use_global_rules else library_media_rule(candidate, root, kind)
+        for kind, rule in candidate["media_rules"].items()
+    }
     # The plan freezes the effective layout; do not let stored overrides mask
     # a new preset selected explicitly for this operation.
     for library in candidate.get("library_destinations", []):
@@ -62,8 +68,9 @@ def build_reorganization_plan(config: dict, preset: str, media: set[str], *,
     for kind, rule in candidate["media_rules"].items():
         rule.update(effective_rules[kind])
         rule["enabled"] = kind in media
-        rule["folder_segments"] = preset_folder_segments(kind, preset, rule["folder_segments"])
-        if preset != "Use current detailed rules":
+        if not use_global_rules:
+            rule["folder_segments"] = preset_folder_segments(kind, preset, rule["folder_segments"])
+        if preset not in {"Use current detailed rules", "Use global organization rules"}:
             rule["filename_template"] = "{original}"
     candidate["monitor"]["settle_seconds"] = 0
     candidate["local_history"]["enabled"] = True
@@ -204,6 +211,7 @@ class ReorganizationOrganizer(Organizer):
             except (OSError, sqlite3.Error):
                 pass
 
+    @traced_operation
     def scan_card(self, card, *, allow_destructive=False):
         self._prepared.clear()
         if allow_destructive and not self.dry_run:
@@ -257,7 +265,7 @@ class ReorganizationOrganizer(Organizer):
             if destination.exists():
                 raise FileExistsError(f"Prepared rename target is now occupied: {destination}")
         else:
-            destination, _, conflict_info = self._resolve_conflict(card, entry.source, entry.destination, "sha256", compare_content=False)
+            destination, _, conflict_info = self._resolve_conflict(card, entry.source, entry.destination, "sha256")
         if destination is None:
             stats.blocked += 1
             return
@@ -275,12 +283,6 @@ class ReorganizationOrganizer(Organizer):
         target_relative = destination.relative_to(self.destination_root).as_posix()
         if target_relative in records:
             raise ValueError("The rename destination already has an integrity baseline. Review it in Integrity first.")
-        if self.config.get("organization", {}).get("checksum_new_baselines", False) and source_relative not in records:
-            digest = checksum(entry.source)
-            if not self._same_snapshot(entry.source.stat(), entry.snapshot):
-                raise SourceChangedError("Source changed while creating its baseline")
-            catalog.record(entry.source, digest, "sha256", verified=False)
-            records[source_relative] = {"digest": digest, "algorithm": "sha256"}
         snapshot = entry.source.stat()
         if conflict_info:
             conflict_info = {key: str(value) if isinstance(value, Path) else value for key, value in conflict_info.items()}
@@ -296,7 +298,8 @@ class ReorganizationOrganizer(Organizer):
         if conflict_info:
             self.manifest.record_conflict(source_key=kwargs["source_key"], card_id=card.card_id,
                 source_path=entry.source, existing_path=Path(conflict_info["existing_path"]), incoming_path=destination,
-                conflict_type="filename_conflict", resolution="conflict_folder", content_checksum="")
+                conflict_type=conflict_info["conflict_type"], resolution="conflict_folder",
+                content_checksum=conflict_info.get("content_checksum", ""))
         portable_ok, local_ok = self._record_transfer(
             kwargs["session"], kwargs["local_sessions"], card, entry.source, kwargs["relative_path"], destination,
             kwargs["source_key"], snapshot.st_size, snapshot.st_mtime_ns, "move", "rename", "", replicas, stats,

@@ -282,7 +282,7 @@ class OrganizerIntegrationTests(unittest.TestCase):
         self.assertEqual(0, second_results[0].imported)
         self.assertEqual(4, second_results[0].skipped)
 
-    def test_move_waits_for_confirmation_then_verifies_and_deletes(self) -> None:
+    def test_move_waits_for_confirmation_then_completes_without_checksum_reads(self) -> None:
         card = self.base / "MOVE_CARD"
         destination = self.base / "move-library"
         config = self.config(card, destination)
@@ -299,24 +299,18 @@ class OrganizerIntegrationTests(unittest.TestCase):
         self.assertEqual(1, blocked.blocked)
         self.assertTrue(source.exists())
 
-        completed = Organizer(config).scan_card(discovered[0], allow_destructive=True)
+        with patch.object(Organizer, "_hash_file", side_effect=AssertionError("Routine move must not hash")):
+            completed = Organizer(config).scan_card(discovered[0], allow_destructive=True)
         self.assertEqual(1, completed.imported)
         self.assertEqual(0, completed.failed)
         self.assertFalse(source.exists())
         self.assertEqual(1, len(list((card / ".photocard" / "transfers").rglob("*.jsonl"))))
         checksum_logs = list((card / ".photocard" / "transfers").rglob("*.sha512"))
-        self.assertEqual(1, len(checksum_logs))
-        checksum_lines = [
-            line for line in checksum_logs[0].read_text(encoding="utf-8").splitlines() if not line.startswith("#")
-        ]
-        digest, relative_path = checksum_lines[0].split("  ", 1)
-        self.assertEqual(128, len(digest))
-        self.assertTrue(relative_path.endswith("IMG_0100.JPG"))
+        self.assertEqual([], checksum_logs)
         local_checksum_logs = list(
             (destination / ".photocard-organizer" / "transfer-records" / "canon-r5-a").rglob("*.sha512")
         )
-        self.assertEqual(1, len(local_checksum_logs))
-        self.assertEqual(checksum_logs[0].read_bytes(), local_checksum_logs[0].read_bytes())
+        self.assertEqual([], local_checksum_logs)
 
     def test_move_keeps_source_when_portable_history_cannot_be_written(self) -> None:
         card = self.base / "SAFE_MOVE_CARD"
@@ -685,7 +679,7 @@ class OrganizerIntegrationTests(unittest.TestCase):
         self.assertEqual("Studio/R5", cards[0].destination_prefix)
         self.assertTrue(cards[0].delete_empty_folders_after_move)
 
-    def test_exact_content_duplicate_is_preserved_with_custom_appendage(self) -> None:
+    def test_exact_content_duplicate_enters_review_with_custom_appendage(self) -> None:
         card = self.base / "EXACT_DUPLICATE_CARD"
         destination = self.base / "exact-duplicate-library"
         config = self.config(card, destination)
@@ -705,11 +699,17 @@ class OrganizerIntegrationTests(unittest.TestCase):
         )
         requested.parent.mkdir(parents=True, exist_ok=True)
         requested.write_bytes(source.read_bytes())
+        conflict_base = destination / "Conflicts" / requested.relative_to(destination)
+        conflict_base.parent.mkdir(parents=True)
+        conflict_base.write_bytes(b"older unresolved conflict")
 
-        results, _ = Organizer(config).scan_all()
+        def no_pause(request):
+            self.fail(f"Conflict paused the transfer: {request.kind}")
+        results, _ = Organizer(config, decision_callback=no_pause).scan_all()
         self.assertEqual(1, results[0].imported)
         self.assertTrue(requested.is_file())
-        self.assertTrue(requested.with_name("IMG_0700 (2).JPG").is_file())
+        self.assertTrue(conflict_base.with_name("IMG_0700 (2).JPG").is_file())
+        self.assertEqual(conflict_base.read_bytes(), b"older unresolved conflict")
         conflicts = ImportManifest(destination).conflicts()
         self.assertEqual(1, len(conflicts))
         self.assertEqual("exact_duplicate", conflicts[0]["conflict_type"])

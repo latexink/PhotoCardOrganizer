@@ -224,8 +224,9 @@ class TransferHubWorkflowTests(unittest.TestCase):
         ]
         laptop = normalize_config(laptop)
 
-        published = publish_library(laptop, laptop["transfer_hubs"][0])
-        repeated = publish_library(laptop, laptop["transfer_hubs"][0])
+        with patch("photocard.transfer_hub._hash_file", side_effect=AssertionError("Ordinary publication must not hash")):
+            published = publish_library(laptop, laptop["transfer_hubs"][0])
+            repeated = publish_library(laptop, laptop["transfer_hubs"][0])
 
         self.assertEqual(1, published.published)
         self.assertEqual(0, published.failed)
@@ -242,7 +243,7 @@ class TransferHubWorkflowTests(unittest.TestCase):
             ),
         )
         self.assertTrue(published.session_path and published.session_path.is_file())
-        self.assertTrue(published.checksum_path and published.checksum_path.is_file())
+        self.assertIsNone(published.checksum_path)
 
     def test_publish_conflict_never_overwrites_without_archiving(self) -> None:
         library = self.base / "publisher-library"
@@ -283,19 +284,16 @@ class TransferHubWorkflowTests(unittest.TestCase):
         config["transfer_hubs"][0]["conflict_policy"] = "archive_and_replace"
         replaced = publish_library(config, config["transfer_hubs"][0])
 
-        self.assertEqual(1, replaced.published)
-        self.assertEqual(source.read_bytes(), destination.read_bytes())
+        self.assertEqual(0, replaced.published)
+        self.assertEqual(1, replaced.failed)
+        self.assertEqual(b"older-different-content", destination.read_bytes())
         archived = list(
             (
-                hub_root
-                / "Producers"
-                / "Laptop"
-                / ".photocard-organizer"
-                / "conflicts"
+                library / "Conflicts"
             ).rglob("IMG_4001.JPG")
         )
         self.assertEqual(1, len(archived))
-        self.assertEqual(b"older-different-content", archived[0].read_bytes())
+        self.assertEqual(source.read_bytes(), archived[0].read_bytes())
 
     def test_publish_source_change_does_not_commit_partial_content(self) -> None:
         library = self.base / "publisher-library"

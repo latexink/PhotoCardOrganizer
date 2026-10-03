@@ -59,7 +59,43 @@ class ImportManifest:
             ).fetchall()
         return {str(row[0]) for row in rows}
 
-    def relocate_destinations(self, source: Path, destination: Path) -> None:
+    def relocate_destinations(self, source: Path, destination: Path, *, expected_source=None,
+                              target_manifest=None, destination_snapshot=None) -> None:
+        from .job_journal import snapshot
+        from .organizer import Organizer
+        current = destination.stat()
+        if destination_snapshot is not None:
+            if not Organizer._matches_receipt(current, snapshot(destination_snapshot)):
+                from .organizer import SourceChangedError
+                raise SourceChangedError("Destination changed before index relocation; source retained")
+            current = destination_snapshot
+        expected = expected_source if expected_source is not None else current
+        with self._connection() as connection:
+            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            receipts = connection.execute(
+                "SELECT * FROM library_source_receipts WHERE destination_path=?", (str(source),)
+            ).fetchall() if "library_source_receipts" in tables else []
+            pending_filter = " AND source_key NOT IN (SELECT source_key FROM pending_imports)" if "pending_imports" in tables else ""
+            imports = connection.execute(
+                "SELECT * FROM imports WHERE destination_path=?" + pending_filter, (str(source),)
+            ).fetchall() if "imports" in tables else []
+        if target_manifest is not None and target_manifest.path != self.path:
+            # Commit origin mappings at the target before changing the old index or
+            # deleting media. Reapplying after either commit is harmless.
+            with target_manifest._connection() as connection:
+                for row in receipts:
+                    copied = json.loads(row["copied_snapshot"])
+                    if not Organizer._matches_receipt(expected, copied):
+                        continue
+                    connection.execute("INSERT OR IGNORE INTO library_source_receipts VALUES (?, ?, ?, ?)",
+                        (row["source_path"], str(destination), row["source_snapshot"], json.dumps(snapshot(current))))
+                for row in imports:
+                    values = dict(row)
+                    values["destination_path"] = str(destination)
+                    columns = ("source_key", "card_id", "source_relative_path", "source_size", "source_mtime_ns",
+                        "destination_path", "action", "verification", "imported_at")
+                    connection.execute(f"INSERT OR IGNORE INTO imports ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+                        tuple(values[name] for name in columns))
         with self._connection() as connection:
             for table, column in (
                 ("imports", "destination_path"),
@@ -67,10 +103,19 @@ class ImportManifest:
                 ("conflicts", "existing_path"),
                 ("conflicts", "incoming_path"),
             ):
+                if table not in tables:
+                    continue
                 connection.execute(
                     f"UPDATE {table} SET {column} = ? WHERE {column} = ?",
                     (str(destination), str(source)),
                 )
+            for row in receipts:
+                copied = row["copied_snapshot"]
+                if Organizer._matches_receipt(expected, json.loads(copied)):
+                    copied = json.dumps(snapshot(current))
+                connection.execute(
+                    "UPDATE library_source_receipts SET destination_path=?, copied_snapshot=? WHERE source_path=? AND destination_path=?",
+                    (str(destination), copied, row["source_path"], str(source)))
 
     def rename_intents(self) -> list[dict]:
         with self._connection() as connection:
@@ -161,6 +206,22 @@ class ImportManifest:
                     source_mtime_ns INTEGER NOT NULL,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS pending_copy_receipts (
+                    source_key TEXT PRIMARY KEY,
+                    source_snapshot TEXT NOT NULL,
+                    destination_snapshot TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS library_source_receipts (
+                    source_path TEXT PRIMARY KEY,
+                    destination_path TEXT NOT NULL,
+                    source_snapshot TEXT NOT NULL,
+                    copied_snapshot TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS library_receipts_destination_idx ON library_source_receipts(destination_path);
+                CREATE TABLE IF NOT EXISTS backup_conflict_receipts (
+                    source_key TEXT PRIMARY KEY,
+                    evidence TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS location_cache (
                     coordinate_key TEXT PRIMARY KEY,
@@ -310,6 +371,63 @@ class ImportManifest:
                     now,
                 ),
             )
+            connection.execute("DELETE FROM pending_copy_receipts WHERE source_key = ?", (source_key,))
+
+    def record_pending_copy(self, source_key: str, source_snapshot, destination_snapshot, conflict=None) -> None:
+        from .job_journal import snapshot
+        destination = snapshot(destination_snapshot)
+        if conflict:
+            destination["conflict"] = {key: str(value) if isinstance(value, Path) else value for key, value in conflict.items()}
+        with self._connection() as connection:
+            connection.execute(
+                "INSERT OR REPLACE INTO pending_copy_receipts VALUES (?, ?, ?)",
+                (source_key, json.dumps(snapshot(source_snapshot)), json.dumps(destination)),
+            )
+
+    def pending_copy_receipt(self, source_key: str) -> dict | None:
+        with self._connection() as connection:
+            try:
+                row = connection.execute(
+                    "SELECT source_snapshot, destination_snapshot FROM pending_copy_receipts WHERE source_key = ?",
+                    (source_key,),
+                ).fetchone()
+            except sqlite3.OperationalError:
+                return None
+        return dict(source=json.loads(row[0]), destination=json.loads(row[1])) if row else None
+
+    def library_copy_receipt(self, source: Path) -> dict | None:
+        if not self.path.exists():
+            return None
+        with self._connection() as connection:
+            try:
+                row = connection.execute("SELECT destination_path, source_snapshot, copied_snapshot FROM library_source_receipts WHERE source_path=?", (str(source),)).fetchone()
+            except sqlite3.OperationalError:
+                return None
+        return dict(destination=row[0], source=json.loads(row[1]), copied=json.loads(row[2])) if row else None
+
+    def record_library_copy(self, source: Path, source_snapshot, destination: Path, *, destination_snapshot=None) -> None:
+        from .job_journal import snapshot
+        copied = destination_snapshot if destination_snapshot is not None else destination.stat()
+        with self._connection() as connection:
+            connection.execute("""INSERT INTO library_source_receipts VALUES (?, ?, ?, ?)
+                ON CONFLICT(source_path) DO UPDATE SET destination_path=excluded.destination_path,
+                    source_snapshot=excluded.source_snapshot, copied_snapshot=excluded.copied_snapshot
+                WHERE destination_path != excluded.destination_path OR source_snapshot != excluded.source_snapshot
+                    OR copied_snapshot != excluded.copied_snapshot""",
+                (str(source), str(destination), json.dumps(snapshot(source_snapshot)), json.dumps(snapshot(copied))))
+
+    def backup_conflict_receipt(self, source_key: str) -> dict | None:
+        with self._connection() as connection:
+            try:
+                row = connection.execute("SELECT evidence FROM backup_conflict_receipts WHERE source_key=?", (source_key,)).fetchone()
+            except sqlite3.OperationalError:
+                return None
+        return json.loads(row[0]) if row else None
+
+    def record_backup_conflict_receipt(self, source_key: str, evidence: dict) -> None:
+        with self._connection() as connection:
+            connection.execute("INSERT OR REPLACE INTO backup_conflict_receipts VALUES (?, ?)",
+                (source_key, json.dumps(evidence)))
 
     def pending(self, source_key: str) -> dict[str, object] | None:
         if not self.path.exists():
@@ -326,6 +444,7 @@ class ImportManifest:
             return
         with self._connection() as connection:
             connection.execute("DELETE FROM pending_imports WHERE source_key = ?", (source_key,))
+            connection.execute("DELETE FROM pending_copy_receipts WHERE source_key = ?", (source_key,))
 
     def get_location(self, coordinate_key: str) -> str | None:
         if not self.path.exists():
@@ -492,6 +611,12 @@ class ImportManifest:
             pattern = f"%{search}%"
             parameters.extend([pattern] * 5)
         return clauses, parameters
+
+    def open_conflict_for_source(self, source_key: str) -> dict | None:
+        with self._connection() as connection:
+            row = connection.execute("SELECT * FROM conflicts WHERE source_key=? AND status='open' ORDER BY id DESC LIMIT 1",
+                                     (source_key,)).fetchone()
+        return dict(row) if row else None
 
     def conflicts(
         self,

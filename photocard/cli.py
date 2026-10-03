@@ -147,17 +147,42 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
     try:
-        return _main_locked(args, instance)
+        from .diagnostics import Diagnostics
+
+        diagnostics = None
+        try:
+            diagnostic_config = Path(args.config).expanduser() if args.config else default_config_path()
+            diagnostics = Diagnostics(diagnostic_config.parent / "diagnostics")
+        except OSError as exc:
+            print(f"Diagnostic logging unavailable: {exc}", file=sys.stderr)
+        try:
+            return _main_locked(args, instance, diagnostics=diagnostics)
+        except Exception:
+            if diagnostics is not None:
+                diagnostics.failed = True
+                diagnostics.logger.exception("Application terminated unexpectedly")
+            raise
+        finally:
+            if diagnostics is not None:
+                diagnostics.close()
     finally:
         instance.release()
 
 
-def _main_locked(args: argparse.Namespace, instance: SingleInstance) -> int:
+def _main_locked(
+    args: argparse.Namespace,
+    instance: SingleInstance,
+    diagnostics=None,
+) -> int:
     try:
         config, config_path = load_config(args.config, create=True)
     except (OSError, ValueError) as exc:
         print(f"Could not load configuration: {exc}", file=sys.stderr)
         return 1
+    if diagnostics is not None:
+        diagnostics.set_detailed(
+            bool(config.get("diagnostics", {}).get("detailed_logging", False))
+        )
 
     if args.init_config:
         save_config(config, config_path)
@@ -298,6 +323,7 @@ def _main_locked(args: argparse.Namespace, instance: SingleInstance) -> int:
         config_path,
         start_minimized=args.service or config["monitor"].get("start_minimized", False),
         instance_guard=instance,
+        diagnostics=diagnostics,
     )
     return 0
 
