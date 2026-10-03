@@ -2,33 +2,31 @@
 
 <img src="assets/photo-card-organizer-mark.svg" width="96" alt="Photo Card Organizer SD-card and landscape mark">
 
-**Import. Organize. Verify. Recover.**
+**Keep your photos and videos in order.**
 
-Photo Card Organizer is a Windows and Linux desktop/tray application for safely
-importing camera cards, folders, and existing photo collections into organized
-libraries. Copy is the default; transfers between filesystems verify destinations
-and required records before source deletion. In-place reorganization uses logged,
-no-overwrite renames when the source and destination share a filesystem.
+Photo Card Organizer helps you bring photos and videos from camera cards, folders,
+and older collections into one or more organized libraries. Choose how folders and
+filenames are arranged, keep backup copies, and review conflicting files without
+overwriting them. It runs on Windows and Linux, with a desktop window and optional
+background monitoring.
 
 ## Highlights
 
-- Import multiple camera cards, ordinary folders, and varied existing libraries.
-- Organize JPEG, RAW, video, and sidecar files from EXIF/XMP metadata.
-- Use independent folder rules for date, month, day, camera, location, rating, media,
-  named shoots, and high-confidence long-exposure brackets.
-- Manage multiple local, removable, or OS-mounted network libraries and backups.
-- Monitor retained Digest Inboxes, travel libraries, and shared USB/SMB/cloud
-  folders without repeatedly copying unchanged files.
-- Preserve exact duplicates and filename conflicts for paged, side-by-side review.
-- Reorganize in place with an optional detailed preview and a final confirmation.
-- Combine libraries using saved folder rules; preserve destination conflicts for review.
-- Export media by type and capture-date range, with optional sidecars and groups.
-- Keep matching portable and local per-session records without redundant content reads.
-- Verify library integrity against stored baselines, or create missing checksums.
-- Restore changed or missing files from checksum-matched backups while preserving damaged originals.
-- Give each library its own folder and filename rules, or inherit global settings.
-- Protect free-space reserves, interrupted work, migrations, and required replicas.
-- Run through a dark PySide6 interface, system tray monitor, or Windows/Linux CLI.
+- Import JPEG, RAW, videos, and their companion files from cards or folders.
+- Sort by capture date, camera, location, rating, or your own folder rules.
+- Keep photos and videos together or in separate libraries, each with its own layout.
+- Combine collections, move a library, or reorganize it using your saved settings.
+- Keep conflicting files for side-by-side review instead of replacing an existing file.
+- Copy to multiple backup destinations, including removable and mounted network drives.
+- Bring new files home from a laptop, USB drive, or locally synced cloud folder.
+- Export selected media or a date range for editing, including related files and groups.
+- Check saved checksums when needed, and recover from a matching backup.
+- Track completed transfers and resume supported interrupted library operations.
+
+Card and folder imports default to Copy. Moving a library defaults to Move, with a
+Keep originals option. File-changing operations require confirmation; moves retain
+sources when required copies, backups, or records fail. Keep an independent backup,
+especially while testing a new workflow.
 
 ## Release And Documentation
 
@@ -38,23 +36,23 @@ no-overwrite renames when the source and destination share a filesystem.
 - [Roadmap](ROADMAP.md)
 - [Release build and verification](PACKAGING.md)
 
-### Current Source Preview
+### Current Preview
 
 `0.11.3.dev2` groups the interface into Libraries, Sources, Transfers, Settings
 and Help. Libraries offers Add media, Export, Manage library and Check files.
-Checksums are manual: check saved records, create missing records, or compare
-with a selected connected backup. Ordinary transfers check completion, size and
-source changes; those checks do not detect same-size corruption. Required backup
-and history failures still retain move sources. Different filenames are not
-globally hash-deduplicated, and conflicts are preserved for review.
+Use Check files when you want to check saved checksums, create missing ones, or
+compare a library with a connected backup. Normal transfers check that copying
+finished, file sizes match, and sources did not change. They do not detect
+corruption that leaves the file size unchanged. Files with different names are
+not automatically searched for identical contents across the entire library.
 
 The local preview installer passed packaged startup and Defender scans, but
 Sandbox Application Control blocked installation testing. See the
 [validation record](docs/VALIDATION-0.11.3.dev2.md). This is not a published
 release or a confirmed fix for the native
 0.11.2 crashes. Existing release downloads and the dev1 diagnostic package remain
-unchanged. The older detailed workflow descriptions below describe the published
-release; use the preview guide and changelog for the updated behavior.
+unchanged. Use the preview guide for current workflows. The technical reference
+below is retained for the published 0.11.2 release and differs in some places.
 
 [Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev2-User-Guide.pdf)
 
@@ -71,14 +69,21 @@ Version 0.11.2 is an unsigned testing release. Use independent backups.
 Screenshots show the actual application with disposable example configuration.
 </details>
 
-Libraries > Merge library previews content-based deduplication against the selected library using saved organization rules. Libraries > Migrate library verifies a copy, including metadata, to an empty folder before updating its location; originals remain for manual cleanup. Close other clients using either library first.
+To combine collections in the preview, choose a receiving library and select
+**Add media > Combine another library**. To relocate it, use
+**Manage library > Move library**. To change its folder layout, choose
+**Manage library > Reorganize library**. Each operation has a final confirmation.
 
-Version 0.11.2 adds on-demand library size and drive-capacity visibility plus optional SHA-256 verification for library migration. SHA-256 remains the default; size-only verification retains the original library and records the reduced verification level. A checksum detects corruption but cannot repair it alone: recovery requires a backup matching the saved baseline.
-
-New configurations use 30-second connection checks and gradually reduce unchanged-card file scans to a configurable 300-second maximum. `Scan now` bypasses the delay. Saved intervals are preserved, and unchanged metadata and catalog records are reused to reduce disk activity.
+New settings check connections every 30 seconds. Connected cards that have not
+changed are scanned less often to reduce disk activity. **Scan now** checks them
+immediately.
 
 <details>
-<summary><strong>Technical and workflow reference</strong></summary>
+<summary><strong>Published 0.11.2 reference (older behavior)</strong></summary>
+
+This section describes 0.11.2, not the current preview. In particular, migration,
+duplicate handling, and automatic checksum behavior have changed. For the preview,
+follow the linked guide above.
 
 ## Source Layout
 

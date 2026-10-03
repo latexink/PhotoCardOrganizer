@@ -192,20 +192,20 @@ PAGE_LABELS = {
 }
 
 NAVIGATION_TOOLTIPS = {
-    "Integrity": "Verify saved checksums, create missing baselines, and review integrity reports.",
-    "General options": "Monitoring interval, portable settings, and application maintenance.",
-    "Dashboard": "Connected sources, capacity, and reviewed import actions.",
-    "Libraries": "Set up destinations, choose a default, import or merge files, and maintain library metadata.",
-    "Cards and drives": "Onboard cards and retain their identity and source settings.",
-    "Import or merge": "Add files from another folder to a managed library after reviewing the destination and source-file handling.",
-    "Digest inboxes": "Retain mixed incoming folders, digest new files incrementally, and review per-file state.",
-    "Travel sync": "Bring new laptop or travel-drive media into the desktop master with copy-only reconciliation.",
-    "Library export": "Select captures and detected bracket, burst, or interval groups for verified editing exports.",
-    "Organization": "Configure per-media destination folders, filenames, and session-record names.",
-    "Safety and location": "Configure verification, duplicates, low space, backups, logs, and place names.",
+    "Integrity": "Check saved checksums, create missing ones, or compare files with a backup.",
+    "General options": "Choose how often to check sources, share settings, or manage the installation.",
+    "Dashboard": "See connected sources and choose which cards to import.",
+    "Libraries": "Choose where your files belong, add media, or move and reorganize a library.",
+    "Cards and drives": "Set up cards and drives so the app remembers them next time.",
+    "Import or merge": "Bring files from another folder into your chosen library.",
+    "Digest inboxes": "Watch incoming folders and keep track of files already imported.",
+    "Travel sync": "Copy new files home from a laptop, travel drive, or shared folder.",
+    "Library export": "Choose photos, videos, and related groups to copy out for editing.",
+    "Organization": "Choose folder layouts and filename patterns for each type of media.",
+    "Safety and location": "Choose backups, free-space limits, transfer records, and online place names.",
     "Conflict review": "Compare preserved filename conflicts side by side and mark them reviewed.",
-    "Activity": "Review transfer, warning, and error events from this application session.",
-    "Help & about": "Open the included manual and view release, project, and credit information.",
+    "Activity": "See what happened during transfers, including warnings and errors.",
+    "Help & about": "Read the manual, find version details, or collect a diagnostic report.",
 }
 
 NAVIGATION_ICONS = {
@@ -2669,8 +2669,8 @@ class PhotoCardApp(QMainWindow):
         version = QLabel(f"Version {__version__}")
         set_dynamic_class(version, "muted")
         description = QLabel(
-            "A cross-platform media ingestion, verification, organization, "
-            "backup, reconciliation, and conflict-review utility."
+            "Import photos and videos from camera cards or folders, organize "
+            "your libraries, and keep track of backups and file conflicts."
         )
         description.setWordWrap(True)
         credits_title = QLabel("PROGRAMMERS / DESIGNERS")
