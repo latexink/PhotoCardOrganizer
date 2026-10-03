@@ -30,6 +30,8 @@ def main():
     audit.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temporary:
         base = Path(temporary)
+        (base / "Photo Library").mkdir()
+        (base / "Incoming").mkdir()
         config = normalize_config({"destination_root": str(base / "Photo Library"),
             "identification": {"auto_detect": False, "configured_roots": []},
             "local_history": {"directory": str(base / "history")},
@@ -46,6 +48,11 @@ def main():
                     window.grab().save(str(audit / f"{slug}-{width}.png"))
                     if width == 1440 and page in {"Libraries", "Integrity", "Organization"}:
                         window.grab().save(str(output / f"{slug}.png"))
+                window.show_page("Import or merge")
+                window.existing_source_edit.setText(str(base / "Incoming"))
+                window._set_existing_step(1)
+                app.processEvents()
+                window.grab().save(str(audit / f"import-options-{width}.png"))
             dialog = LibraryOrganizationDialog(window, {}, config["media_rules"])
             dialog.show()
             app.processEvents()

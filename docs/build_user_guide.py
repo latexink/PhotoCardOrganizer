@@ -422,7 +422,7 @@ def steps(items: list[tuple[str, str]]) -> list[KeepTogether]:
     return result
 
 
-def data_table(headers: list[str], rows: list[list[str]], widths: list[float]) -> Table:
+def data_table(headers: list[str], rows: list[list[str]], widths: list[float], *, compact: bool = False) -> Table:
     data = [[p(header, "table_head") for header in headers]]
     data.extend([[p(cell, "table") for cell in row] for row in rows])
     table = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
@@ -432,8 +432,8 @@ def data_table(headers: list[str], rows: list[list[str]], widths: list[float]) -
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 7),
         ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 4 if compact else 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4 if compact else 6),
     ]
     for index in range(1, len(data)):
         commands.append(("BACKGROUND", (0, index), (-1, index), WHITE if index % 2 else colors.HexColor("#F1F4F8")))
@@ -454,7 +454,7 @@ def build_story() -> list:
     if ".dev" in VERSION:
         diagnostic_pages += [p(f"About this preview: {VERSION}", "h1"),
                   p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
-                  p("This guide describes the current preview. A local Windows installer has been built and checked for startup and Defender detections. Windows Sandbox blocked it before installation, so installation, upgrade, repair and uninstall remain unverified. Linux and physical USB-drive testing also remain outstanding. See docs/VALIDATION-0.11.3.dev2.md for the recorded results."),
+                  p("This guide describes the dev3 interface preview, which has not been packaged or installed. The earlier dev2 build passed startup and Defender checks, but Sandbox blocked its isolated installation tests. Linux and physical USB-drive testing remain outstanding. The installed app may still show the older layout. See docs/VALIDATION-0.11.3.dev2.md for the earlier build's recorded results."),
                   p("The main areas are Libraries, Sources, Transfers, Settings and Help. Use Libraries > Check files for optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Keep originals if you want a copy instead."),
                   p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
                   p("The separate 0.11.3.dev1 diagnostic ZIP is still available for crash investigation. If you are using that older package, extract it and start PhotoCardOrganizer-Diagnostic.bat to keep its settings separate. It does not contain an installer and does not include all the changes described here."),
@@ -579,7 +579,7 @@ def build_story() -> list:
             [1.1 * inch, 1.35 * inch, 4.6 * inch],
         ),
         Spacer(1, 10),
-        p("Progress remains visible below every page. The footer provides Open library, the saved/unsaved status, and Save settings, which is highlighted only when settings change. General options holds the monitoring interval, settings import/export, and installation maintenance. Help & about opens this guide and the changelog."),
+        p("Libraries puts Add media, Export media, Reorganize library and Move library in one toolbar. Open folder and Check files act on the selected library. More contains default-library preferences, size refresh, metadata maintenance, resume and forget actions. Import, export and file checks have a Libraries back button instead of duplicate tabs. Progress and Save settings remain visible below each page."),
         PageBreak(),
     ]
 
@@ -614,7 +614,7 @@ def build_story() -> list:
     story += [
         p("Named library destinations", "h2"),
         p("Libraries retains multiple primary destinations and one default. Set up library creates or connects a destination; connecting an existing folder does not scan, import, or move media. A destination may be local, removable, or a network folder already mounted and authenticated by the operating system. Each library keeps versioned identity, migration state, manifests, and session records under its own .photocard-organizer folder. Initialize, check, upgrade, or repair metadata requires a separate confirmation and never changes media files."),
-        p("The Libraries table shows free space and total drive capacity. Select a library and use <b>Refresh library size</b> to measure its logical file total in the background. The cached result includes metadata and conflicts, excludes links, and can differ from allocated disk space. Refresh after imports or reorganization when you need an updated total; the app does not repeatedly scan idle libraries."),
+        p("The Libraries table shows free space, library size and total drive capacity. The selected library's folder appears below the table. Use <b>More > Refresh library size</b> to measure its file total in the background. The cached result includes metadata and conflicts, excludes links, and can differ from allocated disk space. Refresh after imports or reorganization when needed; the app does not repeatedly scan idle libraries."),
         p("Camera make and model are extracted automatically from EXIF when available. ExifTool is preferred when installed; Pillow and ExifRead provide additional fallbacks. The Camera folder token resolves in this order:"),
         Workflow(["Card camera override", "EXIF model", "EXIF make", "Card display name"]),
         callout(
@@ -670,8 +670,8 @@ def build_story() -> list:
     ]
     story += steps(
         [
-            ("Source", "Select the source folder, accept or edit its source name, and choose whether the scan includes subfolders. Folder selection does not open another dialog or begin analysis."),
-            ("Destination", "Choose the receiving library, optional import grouping, Copy or verified Move, enabled media types, folder layout, and optional camera override. Event/project fields appear only for a named grouping. Analyze source folders only when a read-only editable mapping would be useful."),
+            ("Source", "Select the source folder and choose whether to include subfolders. Transfer details contains an optional label for the import's records. Choosing a folder does not begin a scan."),
+            ("Destination", "Choose the receiving library, import grouping, Copy or Move, folder layout and media types. Event fields appear only for a named grouping. Expand Advanced options for a camera override, source-folder analysis or detailed rules."),
             ("Review", "Read the scan scope, destination, copy/move operation, organization and backup plan. Save settings + Import saves the reviewed settings after final confirmation. Move receives an additional source-removal warning."),
         ]
     )
@@ -687,7 +687,7 @@ def build_story() -> list:
         ),
         callout(
             "Why a separate destination is required",
-            "Import or merge needs a source folder outside the receiving library. To change a library's own layout, use Libraries > Manage library > Reorganize library. A detailed preview is optional, but a final confirmation is always required.",
+            "Import or merge needs a source folder outside the receiving library. To change a library's own layout, use Libraries > Reorganize library. A detailed preview is optional, but a final confirmation is always required.",
             "warn",
         ),
         p("Supported file classes", "h2"),
@@ -704,17 +704,17 @@ def build_story() -> list:
         p("Different filenames remain separate files. Both exact-content and different-content destination conflicts are preserved in the local Conflicts folder with the intended hierarchy. Source media stays in place for copy operations. Recorded source identity helps a repeated merge skip completed copies without hashing again."),
         p("Confirm and process copies to temporary files before completing each transfer, checks file sizes and source changes, and records completed work. Combining libraries does not automatically create checksums. Use Check files afterward if you need them. Cancel stops further work; completed transfers remain recorded for a later retry."),
         p("Move a library to a new location", "h2"),
-        p("Select the library and choose <b>Manage library > Move library</b>, then choose an empty destination. Close other clients using either location. Move is the default; Keep originals makes a copy instead. Compatible same-filesystem moves rename the library; other transfers use staged copies and source-state checks. Existing checksum records are retained."),
+        p("Select the library and choose <b>Move library</b>, then choose an empty destination. Close other clients using either location. Move is the default; Keep originals makes a copy instead. Compatible same-filesystem moves rename the library; other transfers use staged copies and source-state checks. Existing checksum records are retained."),
         p("Moving a library does not normally read every file to calculate a checksum. Size checks catch incomplete copies, but not damage that leaves a file the same size. Use Check files when a full check is needed. If you resume an older job that requested checksum verification, that job keeps its original setting."),
         callout("If a move is interrupted", "Reconnect the original source and destination, then use Resume interrupted operation. Leave temporary files and recovery records in place. The app uses these records to continue safely; it keeps source files if required copies, backups or records fail, or if a destination changed unexpectedly. Installation and physical-drive tests remain incomplete for this preview.", "warn"),
         p("Scope of this preview", "h2"),
-        p("Use Add media to bring files into a library, and Manage library to move or reorganize it. Check files can detect changes using saved checksums. To restore a damaged file, you need a backup that matches its saved checksum. Network destinations must already be connected through your operating system; the app does not provide its own remote login service."),
+        p("Use Add media to bring files into a library, or select Reorganize library or Move library for those operations. Check files can detect changes using saved checksums. To restore a damaged file, you need a backup that matches its saved checksum. Network destinations must already be connected through your operating system; the app does not provide its own remote login service."),
         PageBreak(),
     ]
 
     story += chapter("Reorganize an existing library")
     story += steps([
-        ("Choose the library", "In Libraries, select an available library and choose Manage library > Reorganize library. Save any pending settings first. Monitoring pauses while the plan is prepared."),
+        ("Choose the library", "In Libraries, select an available library and choose Reorganize library. Save any pending settings first. Monitoring pauses while the plan is prepared."),
         ("Choose the layout", "Separate by media type creates Photos, RAW, Videos, and Sidecars folders. Other presets add date or camera levels; Use current detailed rules keeps the saved folder definitions, including conditional bracket folders. Choose which media classes to include. Filenames are retained."),
         ("Preview changes (optional)", "Read current and proposed paths, including Already organized and potential Conflict review entries. Preview does not change media or save settings. You can select Reorganize directly to calculate the plan and continue to the final confirmation."),
         ("Review and reorganize", "Read the explicit move warning and summary before accepting. Save this layout for this library's future imports commits library-specific naming rules when processing starts. Other libraries and global rules remain unchanged. Remove folders left empty is optional."),
@@ -1002,6 +1002,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.11.3.dev3", "Interface preview", "Direct library actions, fewer tabs, simpler import options and compact reorganization. Not packaged or installed."],
                 ["0.11.3.dev2", "Testing preview", "Simpler navigation, manual file checks and fewer repeated reads. Local installer built; installation testing is blocked. Native crashes are not confirmed fixed."],
                 ["0.11.2", "2026-09-16", "On-demand library sizes, drive capacity visibility, and optional SHA-256 migration verification."],
                 ["0.11.1", "2026-09-13", "Atomic catalog startup, immediate first monitoring scans, and Linux CI corrections."],
@@ -1023,6 +1024,7 @@ def build_story() -> list:
                 ["0.1.0", "2026-07-15", "First working camera-card import release preserved as a separate snapshot."],
             ],
             [0.8 * inch, 1.05 * inch, 5.2 * inch],
+            compact=True,
         ),
         PageBreak(),
     ]

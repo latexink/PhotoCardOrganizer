@@ -19,6 +19,7 @@ from PySide6.QtCore import QDate, QEvent, QItemSelectionModel, QObject, QSize, Q
 from PySide6.QtGui import QAction, QCloseEvent, QColor, QDesktopServices, QImageReader, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -43,6 +44,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QProgressDialog,
     QPushButton,
+    QRadioButton,
     QScrollArea,
     QSizePolicy,
     QSpinBox,
@@ -459,6 +461,12 @@ class PhotoCardApp(QMainWindow):
         self.area_tabs.setUsesScrollButtons(True)
         self.area_tabs.currentChanged.connect(self._area_tab_changed)
         content_layout.addWidget(self.area_tabs)
+        self.library_back_button = QPushButton("Libraries")
+        self._add_icon(self.library_back_button, "back")
+        self.library_back_button.setToolTip("Return to your libraries. Unsubmitted import choices are retained.")
+        self.library_back_button.clicked.connect(lambda: self.show_page("Libraries"))
+        content_layout.addWidget(self.library_back_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.library_back_button.hide()
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)
         body_layout.addWidget(content, 1)
@@ -864,16 +872,12 @@ class PhotoCardApp(QMainWindow):
             "Libraries",
             "Libraries",
         )
-        summary = QFrame()
-        summary.setProperty("class", "preview")
-        summary_layout = QVBoxLayout(summary)
-        summary_title = QLabel("MANAGED LIBRARIES")
-        set_dynamic_class(summary_title, "muted")
+        summary_layout = QHBoxLayout()
         self.library_summary_label = QLabel()
         self.library_summary_label.setWordWrap(True)
-        summary_layout.addWidget(summary_title)
-        summary_layout.addWidget(self.library_summary_label)
-        layout.addWidget(summary)
+        set_dynamic_class(self.library_summary_label, "muted")
+        summary_layout.addWidget(self.library_summary_label, 1)
+        layout.addLayout(summary_layout)
 
         primary_actions = QHBoxLayout()
         self.add_library_button = accent(
@@ -901,7 +905,7 @@ class PhotoCardApp(QMainWindow):
         self._add_icon(self.merge_library_button, "next")
         self.merge_library_button.setToolTip("Combine another library with this one. Only destination conflicts are compared by content; both copies are preserved for review.")
         self.merge_library_button.clicked.connect(self._merge_selected_library)
-        primary_actions.addWidget(self.add_library_button)
+        summary_layout.addWidget(self.add_library_button)
         primary_actions.addWidget(self.import_or_merge_button)
         self.merge_library_button.hide()
         self.library_export_button = QPushButton("Export media")
@@ -917,43 +921,35 @@ class PhotoCardApp(QMainWindow):
         self._add_icon(self.migrate_selected_library_button, "refresh")
         self.migrate_selected_library_button.setToolTip("Move this library to a new location, or choose to keep the originals. Checksums are a separate manual action under Check files.")
         self.migrate_selected_library_button.clicked.connect(self._migrate_selected_library)
+        primary_actions.addWidget(self.reorganize_selected_library_button)
+        primary_actions.addWidget(self.migrate_selected_library_button)
         primary_actions.addStretch(1)
         layout.addLayout(primary_actions)
-        library_tools = QHBoxLayout()
         self.manage_library_button = QPushButton("Manage library")
         self.manage_library_button.setToolTip("Reorganize using saved rules, move the library, or refresh its measured size.")
         manage_menu = QMenu(self.manage_library_button)
-        manage_menu.aboutToShow.connect(lambda: [action.setEnabled(button.isEnabled())
-            for action, button in self._manage_actions])
         self._manage_actions = []
         self.manage_library_button.setMenu(manage_menu)
-        library_tools.addWidget(self.manage_library_button)
+        self.manage_library_button.setText("More")
+        self.manage_library_button.setToolTip("Library preferences and maintenance.")
         self.integrity_library_button = QPushButton("Check files")
         self._add_icon(self.integrity_library_button, "info")
         self.integrity_library_button.setToolTip("Check files against saved checksums in the Integrity section.")
         self.integrity_library_button.clicked.connect(self._open_integrity)
-        library_tools.addWidget(self.integrity_library_button)
         self.library_size_button = QPushButton("Refresh library size")
         self.library_size_button.setToolTip("Measure the selected library in the background, including metadata and conflicts. Links are excluded. Results are cached until refreshed; media contents are not read.")
         self.library_size_button.clicked.connect(self._measure_library_size)
-        for button in (self.reorganize_selected_library_button, self.migrate_selected_library_button,
-                       self.library_size_button):
-            action = manage_menu.addAction(button.text(), button.click)
-            action.setToolTip(button.toolTip())
-            self._manage_actions.append((action, button))
-            button.hide()
+        self.library_size_button.hide()
         self._library_sizes = {}
         self._library_size_result = None
         self._library_size_timer = QTimer(self)
         self._library_size_timer.timeout.connect(self._poll_library_size)
-        library_tools.addStretch(1)
-        layout.addLayout(library_tools)
 
         self.resume_library_job_button = QPushButton("Resume interrupted operation")
         self._add_icon(self.resume_library_job_button, "refresh")
         self.resume_library_job_button.setToolTip("Find saved merge or migration work for the selected library and continue its original plan.")
         self.resume_library_job_button.clicked.connect(self._resume_library_job)
-        layout.addWidget(self.resume_library_job_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.resume_library_job_button.hide()
 
         self.library_table = QTableWidget(0, 8)
         self.library_table.setHorizontalHeaderLabels(
@@ -990,6 +986,9 @@ class PhotoCardApp(QMainWindow):
             6,
             QHeaderView.ResizeMode.Stretch,
         )
+        for column in (1, 6, 7):
+            self.library_table.setColumnHidden(column, True)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.library_table.itemSelectionChanged.connect(
             self._update_library_action_state
         )
@@ -997,6 +996,11 @@ class PhotoCardApp(QMainWindow):
             lambda _row, _column: self._edit_library_destination()
         )
         layout.addWidget(self.library_table, 1)
+        self.selected_library_path = QLabel()
+        self.selected_library_path.setWordWrap(True)
+        self.selected_library_path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        set_dynamic_class(self.selected_library_path, "muted")
+        layout.addWidget(self.selected_library_path)
 
         actions = QHBoxLayout()
         self.edit_library_button = QPushButton("Edit details")
@@ -1042,15 +1046,21 @@ class PhotoCardApp(QMainWindow):
         self.remove_library_button.clicked.connect(
             self._remove_library_destination
         )
-        for button in (
-            self.edit_library_button,
-            self.default_library_button,
-            self.open_selected_library_button,
-            self.upgrade_library_button,
-        ):
+        for button in (self.edit_library_button, self.open_selected_library_button,
+                       self.integrity_library_button):
             actions.addWidget(button)
         actions.addStretch(1)
-        actions.addWidget(self.remove_library_button)
+        actions.addWidget(self.manage_library_button)
+        for button in (self.default_library_button, self.library_size_button,
+                       self.upgrade_library_button, self.resume_library_job_button,
+                       self.remove_library_button):
+            if button is self.remove_library_button:
+                manage_menu.addSeparator()
+            action = manage_menu.addAction(button.text(), button.click)
+            action.setToolTip(button.toolTip())
+            self._manage_actions.append((action, button))
+            button.hide()
+        manage_menu.aboutToShow.connect(self._refresh_library_menu)
         layout.addLayout(actions)
 
         self._refresh_library_destinations()
@@ -1118,7 +1128,7 @@ class PhotoCardApp(QMainWindow):
         workflow_layout.setSpacing(7)
         step_row = QVBoxLayout()
         self.existing_step_label = QLabel("Step 1 of 3: Source")
-        self.existing_step_label.setObjectName("dialogTitle")
+        set_dynamic_class(self.existing_step_label, "muted")
         self.existing_step_detail = QLabel(
             "Choose the folder whose files you want to add"
         )
@@ -1126,6 +1136,7 @@ class PhotoCardApp(QMainWindow):
         self.existing_step_detail.setWordWrap(True)
         step_row.addWidget(self.existing_step_label)
         step_row.addWidget(self.existing_step_detail)
+        self.existing_step_detail.hide()
         workflow_layout.addLayout(step_row)
         self.existing_step_progress = QProgressBar()
         self.existing_step_progress.setRange(1, 3)
@@ -1142,7 +1153,7 @@ class PhotoCardApp(QMainWindow):
         source_layout = QVBoxLayout(source_content)
         source_layout.setContentsMargins(2, 2, 12, 16)
         source_layout.setSpacing(14)
-        source_group = QGroupBox("Files to add")
+        source_group = QWidget()
         source_form = QFormLayout(source_group)
         source_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         source_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
@@ -1162,9 +1173,23 @@ class PhotoCardApp(QMainWindow):
         self.existing_recursive_check = QCheckBox("Include files in subfolders")
         self.existing_recursive_check.setChecked(True)
         source_form.addRow("Source folder", source_row)
-        source_form.addRow("Source name", self.existing_name_edit)
         source_form.addRow("", self.existing_recursive_check)
         source_layout.addWidget(source_group)
+        source_options = QWidget()
+        source_options_form = QFormLayout(source_options)
+        source_options_form.addRow("Transfer label", self.existing_name_edit)
+        self.existing_source_options = QToolButton()
+        self.existing_source_options.setText("Transfer details")
+        self.existing_source_options.setCheckable(True)
+        self.existing_source_options.setArrowType(Qt.ArrowType.RightArrow)
+        self.existing_source_options.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.existing_source_options.setToolTip("Optional name used in this import's transfer records.")
+        self.existing_source_options.toggled.connect(source_options.setVisible)
+        self.existing_source_options.toggled.connect(lambda checked: self.existing_source_options.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow))
+        source_layout.addWidget(self.existing_source_options, 0, Qt.AlignmentFlag.AlignLeft)
+        source_layout.addWidget(source_options)
+        source_options.hide()
         self.existing_source_state_label = QLabel("Choose a folder to continue.")
         self.existing_source_state_label.setWordWrap(True)
         set_dynamic_class(self.existing_source_state_label, "muted")
@@ -1176,7 +1201,7 @@ class PhotoCardApp(QMainWindow):
         plan_layout = QVBoxLayout(plan_content)
         plan_layout.setContentsMargins(2, 2, 12, 16)
         plan_layout.setSpacing(14)
-        destination_group = QGroupBox("Destination")
+        destination_group = QWidget()
         destination_form = QFormLayout(destination_group)
         self.existing_destination_form = destination_form
         destination_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
@@ -1229,11 +1254,31 @@ class PhotoCardApp(QMainWindow):
             ],
             "copy",
         )
+        self.existing_action_combo.setParent(destination_group)
+        self.existing_action_combo.hide()
+        transfer_methods = QWidget()
+        transfer_layout = QHBoxLayout(transfer_methods)
+        transfer_layout.setContentsMargins(0, 0, 0, 0)
+        self.existing_transfer_methods = QButtonGroup(self)
+        for index, (title, tip) in enumerate((
+            ("Copy", "Keep source files after importing."),
+            ("Move", "Remove source files only after required transfers and records succeed."),
+        )):
+            button = QRadioButton(title)
+            button.setToolTip(tip)
+            self.existing_transfer_methods.addButton(button, index)
+            transfer_layout.addWidget(button)
+        transfer_layout.addStretch(1)
+        self.existing_transfer_methods.button(0).setChecked(True)
+        self.existing_transfer_methods.idClicked.connect(self.existing_action_combo.setCurrentIndex)
+        self.existing_action_combo.currentIndexChanged.connect(
+            lambda index: self.existing_transfer_methods.button(index).setChecked(True))
         destination_form.addRow(
             "Receiving library",
             self.existing_library_combo,
         )
         destination_form.addRow("Library folder", destination_row)
+        destination_form.setRowVisible(destination_row, False)
         destination_form.addRow(
             "Import grouping",
             self.existing_folder_mode_combo,
@@ -1247,12 +1292,12 @@ class PhotoCardApp(QMainWindow):
             self.existing_prefix_edit,
         )
         destination_form.addRow(
-            "Source-file handling",
-            self.existing_action_combo,
+            "Transfer method",
+            transfer_methods,
         )
         plan_layout.addWidget(destination_group)
 
-        organization_group = QGroupBox("Organization")
+        organization_group = QWidget()
         organization_layout = QVBoxLayout(organization_group)
         preset_form = QFormLayout()
         preset_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
@@ -1262,6 +1307,7 @@ class PhotoCardApp(QMainWindow):
         preset_form.addRow("Folder layout", self.existing_preset_combo)
         preset_form.addRow("Camera override (optional)", self.existing_camera_edit)
         organization_layout.addLayout(preset_form)
+        preset_form.setRowVisible(self.existing_camera_edit, False)
         self.existing_structure_status_label = QLabel(
             "Source structure has not been analyzed. The selected folder layout will be used."
         )
@@ -1283,6 +1329,21 @@ class PhotoCardApp(QMainWindow):
         preset_actions.addWidget(detailed)
         preset_actions.addStretch(1)
         organization_layout.addLayout(preset_actions)
+        self.existing_advanced_button = QToolButton()
+        self.existing_advanced_button.setText("Advanced options")
+        self.existing_advanced_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.existing_advanced_button.setArrowType(Qt.ArrowType.RightArrow)
+        self.existing_advanced_button.setCheckable(True)
+        self.existing_advanced_button.setToolTip("Camera override, source-folder analysis, and detailed organization settings.")
+        def show_advanced(checked):
+            preset_form.setRowVisible(self.existing_camera_edit, checked)
+            self.existing_structure_status_label.setVisible(checked)
+            self.existing_analyze_button.setVisible(checked)
+            detailed.setVisible(checked)
+            self.existing_advanced_button.setArrowType(
+                Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+        self.existing_advanced_button.toggled.connect(show_advanced)
+        show_advanced(False)
         media_row = QHBoxLayout()
         media_row.addWidget(QLabel("Media types"))
         for kind, label in MEDIA_LABELS.items():
@@ -1293,8 +1354,8 @@ class PhotoCardApp(QMainWindow):
             media_row.addWidget(check)
         media_row.addStretch(1)
         organization_layout.addLayout(media_row)
-        preview = QFrame()
-        preview.setProperty("class", "preview")
+        organization_layout.addWidget(self.existing_advanced_button, 0, Qt.AlignmentFlag.AlignLeft)
+        preview = QWidget()
         preview_layout = QVBoxLayout(preview)
         caption = QLabel("PLANNED IMPORT")
         set_dynamic_class(caption, "muted")
@@ -1302,7 +1363,8 @@ class PhotoCardApp(QMainWindow):
         self.existing_preview_label.setWordWrap(True)
         preview_layout.addWidget(caption)
         preview_layout.addWidget(self.existing_preview_label)
-        organization_layout.addWidget(preview)
+        preview.setParent(organization_group)
+        preview.hide()
         plan_layout.addWidget(organization_group)
         plan_layout.addStretch(1)
         self.existing_step_stack.addWidget(scrollable(plan_content))
@@ -1322,7 +1384,7 @@ class PhotoCardApp(QMainWindow):
         review_group_layout.addWidget(self.existing_review_summary)
         review_layout.addWidget(review_group, 1)
         self.existing_move_warning = QLabel(
-            "Verified move removes each source file only after required copies, checksums, backups, and transfer records succeed."
+            "Move removes each source file only after required copies, file checks, backups, and transfer records succeed."
         )
         self.existing_move_warning.setWordWrap(True)
         set_dynamic_class(self.existing_move_warning, "warning")
@@ -2908,6 +2970,11 @@ class PhotoCardApp(QMainWindow):
             self.area_tabs.setTabToolTip(tab, NAVIGATION_TOOLTIPS[page])
         self.area_tabs.setCurrentIndex(pages.index(name))
         self.area_tabs.blockSignals(False)
+        library_area = name in ("Libraries", "Import or merge", "Library export", "Integrity")
+        self.area_tabs.setVisible(not library_area and len(pages) > 1)
+        self.library_back_button.setVisible(library_area and name != "Libraries")
+        if hasattr(self, "open_library_button"):
+            self.open_library_button.setVisible(not library_area)
         if name == "Digest inboxes":
             self._refresh_digest_inboxes()
         if hasattr(self, "edit_card_button"):
@@ -6224,6 +6291,8 @@ class PhotoCardApp(QMainWindow):
         if not hasattr(self, "library_table"):
             return
         selected = self._selected_library_destination()
+        if hasattr(self, "selected_library_path"):
+            self.selected_library_path.setText(str(selected.get("root", "")) if selected else "")
         available = selected is not None
         is_default = bool(
             selected
@@ -6240,6 +6309,8 @@ class PhotoCardApp(QMainWindow):
         )
         self.library_export_button.setEnabled(online and not self._manual_import_running)
         self.reorganize_selected_library_button.setEnabled(online and not self._manual_import_running)
+        self.migrate_selected_library_button.setEnabled(online and not self._manual_import_running)
+        self.library_size_button.setEnabled(online and not self._manual_import_running)
         if import_target is not None:
             self.import_or_merge_button.setToolTip(
                 "Add files from another folder or library to "
@@ -6278,6 +6349,11 @@ class PhotoCardApp(QMainWindow):
             available and not self._manual_import_running
         )
         self.resume_library_job_button.setEnabled(available and not self._manual_import_running)
+
+    def _refresh_library_menu(self) -> None:
+        for action, button in self._manage_actions:
+            action.setText(button.text())
+            action.setEnabled(button.isEnabled())
 
     def _library_roots_except(
         self,

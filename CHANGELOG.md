@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.3.dev3 - Interface preview, 2026-10-03
+
+- Made Add media, Export media, Reorganize library and Move library directly accessible in one Libraries toolbar.
+- Removed duplicate library subtabs. Import, export and file checks return to Libraries with a back button.
+- Moved less common library preferences and maintenance actions into More, with current labels and availability.
+- Kept size and free-space columns readable and moved the selected folder path below the table.
+- Made Copy and Move visible choices during import, with optional transfer details and advanced options collapsed.
+- Removed repeated import summaries and unnecessary framing; retained the final review and move confirmation.
+- Simplified the reorganization dialog. The future-import layout option appears only when changing layouts.
+- Transfer logic is unchanged. This source preview has not been packaged or installed.
+
 ## 0.11.3.dev2 - Testing preview, 2026-10-03
 
 - Consolidated navigation into Libraries, Sources, Transfers, Settings and Help, with named tool tabs and fewer library action buttons.

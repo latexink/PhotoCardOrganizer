@@ -38,23 +38,27 @@ especially while testing a new workflow.
 
 ### Current Preview
 
-`0.11.3.dev2` groups the interface into Libraries, Sources, Transfers, Settings
-and Help. Libraries offers Add media, Export, Manage library and Check files.
+`0.11.3.dev3` groups the interface into Libraries, Sources, Transfers, Settings
+and Help. Libraries has direct Add media, Export, Reorganize and Move actions.
+Less common maintenance lives in More. Import, export and file checks return to
+Libraries with a back button rather than a second row of tabs. Import offers
+visible Copy and Move choices, with advanced options collapsed.
 Use Check files when you want to check saved checksums, create missing ones, or
 compare a library with a connected backup. Normal transfers check that copying
 finished, file sizes match, and sources did not change. They do not detect
 corruption that leaves the file size unchanged. Files with different names are
 not automatically searched for identical contents across the entire library.
 
-The local preview installer passed packaged startup and Defender scans, but
-Sandbox Application Control blocked installation testing. See the
+This interface preview has not been built or installed. The earlier dev2 installer
+passed packaged startup and Defender scans, but Sandbox Application Control
+blocked isolated installation testing. See the
 [validation record](docs/VALIDATION-0.11.3.dev2.md). This is not a published
 release or a confirmed fix for the native
 0.11.2 crashes. Existing release downloads and the dev1 diagnostic package remain
 unchanged. Use the preview guide for current workflows. The technical reference
 below is retained for the published 0.11.2 release and differs in some places.
 
-[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev2-User-Guide.pdf)
+[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev3-User-Guide.pdf)
 
 Version 0.11.2 is an unsigned testing release. Use independent backups.
 
@@ -71,8 +75,8 @@ Screenshots show the actual application with disposable example configuration.
 
 To combine collections in the preview, choose a receiving library and select
 **Add media > Combine another library**. To relocate it, use
-**Manage library > Move library**. To change its folder layout, choose
-**Manage library > Reorganize library**. Each operation has a final confirmation.
+**Move library**. To change its folder layout, choose **Reorganize library**.
+Each operation has a final confirmation.
 
 New settings check connections every 30 seconds. Connected cards that have not
 changed are scanned less often to reduce disk activity. **Scan now** checks them

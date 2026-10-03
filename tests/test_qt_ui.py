@@ -142,6 +142,56 @@ class QtWorkflowTests(unittest.TestCase):
         self.window.show_page("Conflict review")
         self.assertEqual(self.window.navigation.currentItem().text(), "Transfers")
 
+    def test_library_workflows_use_actions_and_back_navigation_not_tabs(self):
+        self.window.show()
+        self.window.show_page("Libraries")
+        self.app.processEvents()
+        self.assertTrue(self.window.area_tabs.isHidden())
+        self.assertTrue(self.window.library_back_button.isHidden())
+        self.assertFalse(self.window.reorganize_selected_library_button.isHidden())
+        self.assertFalse(self.window.migrate_selected_library_button.isHidden())
+        self.assertTrue(self.window.upgrade_library_button.isHidden())
+        for page in ("Import or merge", "Library export", "Integrity"):
+            self.window.show_page(page)
+            self.assertTrue(self.window.area_tabs.isHidden())
+            self.assertFalse(self.window.library_back_button.isHidden())
+            self.window.library_back_button.click()
+            self.assertEqual(self.window.page_indexes["Libraries"], self.window.stack.currentIndex())
+        self.window.show_page("Cards and drives")
+        self.assertFalse(self.window.area_tabs.isHidden())
+
+    def test_import_transfer_method_buttons_keep_existing_settings_in_sync(self):
+        self.window.existing_transfer_methods.button(1).click()
+        self.assertEqual("move", self.window.existing_action_combo.currentData())
+        self.window.existing_action_combo.setCurrentIndex(0)
+        self.assertTrue(self.window.existing_transfer_methods.button(0).isChecked())
+        self.assertFalse(self.window.existing_transfer_methods.button(1).isChecked())
+        self.assertTrue(self.window.existing_action_combo.isHidden())
+
+    def test_library_maintenance_menu_tracks_live_button_state(self):
+        self.window.upgrade_library_button.setText("Repair metadata")
+        self.window.upgrade_library_button.setEnabled(False)
+        self.window._refresh_library_menu()
+        action = next(action for action, button in self.window._manage_actions
+                      if button is self.window.upgrade_library_button)
+        self.assertEqual("Repair metadata", action.text())
+        self.assertFalse(action.isEnabled())
+
+    def test_library_path_and_import_advanced_controls_are_available(self):
+        self.window.show()
+        self.window.show_page("Libraries")
+        selected = self.window._selected_library_destination()
+        self.assertEqual(str(selected["root"]), self.window.selected_library_path.text())
+        self.assertTrue(self.window.open_library_button.isHidden())
+        self.window.show_page("Import or merge")
+        self.window._set_existing_step(1)
+        self.assertTrue(self.window.existing_camera_edit.isHidden())
+        self.window.existing_advanced_button.click()
+        self.assertFalse(self.window.existing_camera_edit.isHidden())
+        self.assertFalse(self.window.existing_analyze_button.isHidden())
+        self.window.existing_advanced_button.click()
+        self.assertTrue(self.window.existing_camera_edit.isHidden())
+
     def test_reorganization_can_proceed_without_detailed_preview(self):
         root = Path(self.window.config["destination_root"])
         (root / "old").mkdir(parents=True, exist_ok=True)

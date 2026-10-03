@@ -83,11 +83,16 @@ class ReorganizationDialog(DiagnosticDialog):
         self.setWindowTitle("Reorganize library")
         self.resize(900, 330)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
         root = Path(config["destination_root"])
         title = QLabel(str(root))
         title.setWordWrap(True)
         layout.addWidget(title)
         form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        form.setVerticalSpacing(14)
         self.preset = QComboBox()
         for name in ORGANIZATION_PRESETS:
             label = {"Media folder only": "Separate by media type", "Use current detailed rules": "Saved rules for this library"}.get(name, name)
@@ -111,6 +116,7 @@ class ReorganizationDialog(DiagnosticDialog):
         self.save_layout = QCheckBox("Save this layout for this library's future imports")
         self.save_layout.setChecked(False)
         self.save_layout.setEnabled(False)
+        self.save_layout.hide()
         self.save_layout.setToolTip("Save library-specific naming rules when processing starts. Other libraries and global organization stay unchanged.")
         self.preset.currentIndexChanged.connect(self._layout_changed)
         self.cleanup = QCheckBox("Remove folders left empty")
@@ -137,7 +143,7 @@ class ReorganizationDialog(DiagnosticDialog):
         self.table.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.table.hide()
         layout.addWidget(self.table, 1)
-        self.status = QLabel("Preview not generated")
+        self.status = QLabel("Ready")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.progress = QProgressBar()
@@ -166,6 +172,7 @@ class ReorganizationDialog(DiagnosticDialog):
     def _layout_changed(self):
         changed = self.preset.currentData() != "Use current detailed rules"
         self.save_layout.setEnabled(changed)
+        self.save_layout.setVisible(changed)
         self.save_layout.setChecked(changed)
         self.save_layout.setText(
             "Use global rules for this library's future imports"
@@ -179,7 +186,7 @@ class ReorganizationDialog(DiagnosticDialog):
         self.table.hide()
         self.resize(self.width(), 330)
         self.process.setEnabled(True)
-        self.status.setText("Preview not generated")
+        self.status.setText("Ready")
 
     def request_process(self):
         if self._running:
