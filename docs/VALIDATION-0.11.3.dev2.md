@@ -40,3 +40,17 @@ settings were not modified. Native 0.11.2 crashes have no confirmed fix.
 
 Do not treat this preview as a validated public release. Use disposable media for
 testing. Historical PDFs and the separate dev1 diagnostic package are preserved.
+
+## Wording update rebuild
+
+Rebuilt from source commit `42a85a8bbd6db60f3cb3aebae084a33c7701c00b` on
+2026-10-03 with the reviewed manual, About text and navigation tooltips. The
+wording pass ran 55 focused interface tests successfully. The rebuild reused
+those tests, regenerated the guide, and passed fresh packaged GUI startup and
+Defender installer/bundle scans. The rendered guide's preview page was inspected.
+Installer lifecycle checks were not repeated because the recorded Application
+Control block remains unresolved. All validation gaps above still apply.
+
+This installer replaces the earlier local dev2 build, not a published release.
+SHA-256:
+`b77ebef889497ff2af4d5a1711840ba474f497f9a38eac95b13b818392ef2c70`.
