@@ -50,6 +50,8 @@ the longest label needed 156 pixels, while the available text width was 151.
 All other tests completed without failure. The controls now use Qt's actual
 content sizing and minimum-expanding policy, instead of a character-count
 estimate. Their row always spans the form's full width, avoiding font-dependent
-inline label placement. The same assertion is retained and also exercised with a monospace
-font; the focused Windows test passed. The repository workflow checks the
+inline label placement. Follow-up dimensions also showed the embedded editor
+inheriting standalone text-field padding and borders; a shared styling rule now
+removes that duplicate inner framing. The same assertion is retained and also
+exercised with a monospace font; the focused Windows test passed. The repository workflow checks the
 correction on Linux; this remains separate from Linux installer/runtime testing.

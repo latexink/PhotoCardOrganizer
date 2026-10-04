@@ -152,6 +152,13 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QDateEdit, QComboBox, QTextEdit, QPlainText
 QComboBox {{
     padding-right: 30px;
 }}
+QComboBox QLineEdit {{
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}}
 QTextEdit, QPlainTextEdit {{
     padding: 7px;
 }}
