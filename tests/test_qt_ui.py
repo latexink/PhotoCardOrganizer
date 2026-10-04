@@ -47,6 +47,100 @@ from photocard.structure_detection import detect_existing_structure
 
 
 class QtWorkflowTests(unittest.TestCase):
+    def _prepare_one_time_import(self):
+        second = self.base / "second-library"
+        second.mkdir()
+        config = copy.deepcopy(self.window.config)
+        config["library_destinations"].append({"id": "second", "name": "Second library", "root": str(second)})
+        self.window.config = normalize_config(config)
+        self.window._load_config_into_controls()
+        self.window.existing_source_edit.setText(str(self.cards[0]))
+        self.window.existing_library_combo.setCurrentIndex(self.window.existing_library_combo.findData("second"))
+        for kind, control in self.window.existing_media_checks.items():
+            control.setChecked(kind == "video")
+        self.window.existing_preset_combo.setCurrentIndex(self.window.existing_preset_combo.findData("Date only"))
+        self.window._set_settings_dirty(False)
+        return copy.deepcopy(self.window.config)
+
+    def test_one_time_import_preserves_saved_defaults(self):
+        before = self._prepare_one_time_import()
+        with patch("photocard.qt_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+             patch("photocard.qt_window.save_config") as save, \
+             patch.object(self.window, "_start_card_batch", return_value=False) as start:
+            self.window._review_existing_import()
+        save.assert_not_called()
+        self.assertEqual(before, self.window.config)
+        operation = start.call_args.kwargs["config_override"]
+        self.assertEqual("second", operation["default_library_id"])
+        self.assertFalse(operation["media_rules"]["photo"]["enabled"])
+        self.assertTrue(before["media_rules"]["photo"]["enabled"])
+        self.assertEqual(operation["library_destinations"][1]["organization_overrides"]["video"]["folder_segments"],
+                         operation["media_rules"]["video"]["folder_segments"])
+
+    def test_import_rule_save_is_library_specific_and_opt_in(self):
+        before = self._prepare_one_time_import()
+        self.window.existing_save_rules_check.setChecked(True)
+        with patch("photocard.qt_window.QMessageBox.question", return_value=QMessageBox.StandardButton.Yes), \
+             patch("photocard.qt_window.save_config") as save, \
+             patch.object(self.window, "_start_card_batch", return_value=False):
+            self.window._review_existing_import()
+        save.assert_called_once()
+        self.assertEqual(before["default_library_id"], self.window.config["default_library_id"])
+        self.assertEqual(before["media_rules"], self.window.config["media_rules"])
+        target = next(library for library in self.window.config["library_destinations"] if library["id"] == "second")
+        self.assertEqual(["Videos", "{date:%Y}", "{date:%Y-%m-%d}"], target["organization_overrides"]["video"]["folder_segments"])
+
+    def test_sources_preserve_legacy_identity_and_selection(self):
+        self.window.travel_libraries = [{"id": "field", "name": "Laptop", "root": str(self.cards[0]), "enabled": True}]
+        self.window._refresh_travel_libraries()
+        self.window.saved_sources_table.selectRow(0)
+        self.assertEqual(("travel", "field"), self.window._saved_source_key)
+        self.assertEqual("field", self.window._selected_travel_libraries()[0]["id"])
+        self.window.existing_source_edit.setText(str(self.cards[0]))
+        _config, card, _preset = self.window._build_existing_import_plan()
+        self.assertEqual("folder-travel-field", card.card_id)
+        self.window._refresh_travel_libraries()
+        self.assertEqual(("travel", "field"), self.window._saved_source_key)
+        self.assertFalse(self.window.travel_libraries[0].get("auto_digest", False))
+
+    def test_saved_source_actions_follow_availability_and_busy_state(self):
+        self.window.travel_libraries = [{"id": "field", "name": "Laptop", "root": str(self.cards[0]), "enabled": True}]
+        self.window._refresh_travel_libraries()
+        self.window.saved_sources_table.selectRow(0)
+        self.assertTrue(self.window.import_saved_source_button.isEnabled())
+        self.window._manual_import_running = True
+        self.window._update_travel_action_state()
+        self.assertFalse(self.window.import_saved_source_button.isEnabled())
+        self.assertFalse(self.window.saved_source_remove_action.isEnabled())
+        self.window._manual_import_running = False
+        self.window.travel_libraries[0]["root"] = str(self.base / "disconnected")
+        self.window._refresh_travel_libraries()
+        self.assertFalse(self.window.import_saved_source_button.isEnabled())
+
+    def test_source_history_uses_selected_receiving_library(self):
+        self._prepare_one_time_import()
+        self.window.import_library_combo.setCurrentIndex(self.window.import_library_combo.findData("second"))
+        self.assertEqual(self.base / "second-library", self.window._source_library_root())
+
+    def test_transfer_records_button_does_not_create_missing_folder(self):
+        missing = self.base / "no-records"
+        self.window.config["local_history"]["directory"] = str(missing)
+        with patch("photocard.qt_window.QMessageBox.information") as notice:
+            self.window._open_transfer_records()
+        notice.assert_called_once()
+        self.assertFalse(missing.exists())
+
+    def test_merge_entry_uses_same_import_flow(self):
+        with patch.object(self.window, "_open_import_merge") as add_files:
+            self.window._merge_selected_library()
+        add_files.assert_called_once()
+
+    def test_export_conflict_choice_invalidates_prior_selection(self):
+        self.window._export_scanned_root = self.base
+        self.window.export_conflicts_check.setChecked(True)
+        self.assertIsNone(self.window._export_scanned_root)
+        self.assertFalse(self.window.export_selected_button.isEnabled())
+
     def test_diagnostic_dialog_boundaries_and_model_resets(self):
         from PySide6.QtCore import QTimer
         from photocard.qt_library_tools import DiagnosticDialog, LazyTableModel
@@ -135,9 +229,7 @@ class QtWorkflowTests(unittest.TestCase):
             start.assert_called_once_with(False, backup_root=backup)
 
     def test_sidebar_routes_directly_to_all_main_pages(self):
-        for name in ("Cards and drives", "Digest inboxes", "Travel sync", "Dashboard",
-                     "Activity", "Conflict review", "Organization", "Safety and location",
-                     "General options", "Help & about", "Libraries"):
+        for name in (pages[0] for _label, pages in NAVIGATION_SECTIONS):
             item = self.window.navigation_items[name]
             self.window.navigation.setCurrentItem(item)
             self.assertEqual(self.window.stack.currentIndex(), self.window.page_indexes[name])
@@ -213,7 +305,8 @@ class QtWorkflowTests(unittest.TestCase):
             self.window.library_back_button.click()
             self.assertEqual(self.window.page_indexes["Libraries"], self.window.stack.currentIndex())
         self.window.show_page("Cards and drives")
-        self.assertTrue(self.window.library_back_button.isHidden())
+        self.assertFalse(self.window.library_back_button.isHidden())
+        self.assertEqual("Back to sources", self.window.library_back_button.text())
 
     def test_import_transfer_method_buttons_keep_existing_settings_in_sync(self):
         self.window.existing_transfer_methods.button(1).click()
@@ -402,7 +495,7 @@ class QtWorkflowTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            14,
+            6,
             self.window.navigation.count(),
         )
         self.assertEqual("Libraries", self.window.navigation.item(0).text())
@@ -560,7 +653,7 @@ class QtWorkflowTests(unittest.TestCase):
 
     def test_workflow_controls_are_explicit(self) -> None:
         self.assertEqual(
-            "Save settings + Import",
+            "Add files",
             self.window.existing_review_button.text(),
         )
         self.assertTrue(self.window.destination_edit.isReadOnly())
@@ -728,10 +821,10 @@ class QtWorkflowTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertEqual("Set up library", self.window.add_library_button.text())
-        self.assertEqual("Export media", self.window.library_export_button.text())
-        self.assertEqual("Reorganize library", self.window.reorganize_selected_library_button.text())
+        self.assertEqual("Export files", self.window.library_export_button.text())
+        self.assertEqual("Reorganize files", self.window.reorganize_selected_library_button.text())
         self.assertEqual(
-            "Add media",
+            "Add files",
             self.window.import_or_merge_button.text(),
         )
         selected = self.window._selected_library_destination()
@@ -787,7 +880,7 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertFalse(self.window.existing_event_name_edit.isHidden())
         self.assertFalse(self.window.existing_prefix_edit.isHidden())
         self.assertEqual(
-            "Save settings + Import",
+            "Add files",
             self.window.existing_review_button.text(),
         )
 
@@ -1022,11 +1115,11 @@ class QtWorkflowTests(unittest.TestCase):
             ).is_file()
         )
         self.assertEqual(
-            6,
+            4,
             len(self.window.config["media_rules"]["video"]["folder_segments"]),
         )
         self.assertEqual(
-            6,
+            4,
             len(self.window.media_controls["video"]["segments"]),
         )
 
@@ -1076,21 +1169,24 @@ class QtWorkflowTests(unittest.TestCase):
         self.assertIsNone(page.findChild(QTabWidget))
         self.assertTrue(self.window.travel_scroll_area.isAncestorOf(self.window.travel_table))
         self.assertTrue(self.window.travel_scroll_area.isAncestorOf(self.window.hub_table))
-        self.assertFalse(self.window.shared_folders_button.isChecked())
-        self.assertFalse(self.window.hub_table.isVisibleTo(page))
+        self.assertTrue(self.window.shared_folders_button.isChecked())
+        self.assertTrue(self.window.hub_table.isVisibleTo(page))
         self.window.shared_folders_button.click()
         self.app.processEvents()
-        self.assertTrue(self.window.hub_table.isVisibleTo(page))
+        self.assertFalse(self.window.hub_table.isVisibleTo(page))
+        self.assertTrue(self.window.travel_table.isHidden())
         self.assertFalse(self.window.travel_more_button.isEnabled())
         self.assertFalse(self.window.hub_more_button.isEnabled())
 
     def test_settings_pages_are_direct_sidebar_choices(self) -> None:
         for name in ("Organization", "Safety and location", "General options"):
             item = self.window.navigation_items[name]
-            self.assertEqual(name, item.data(Qt.ItemDataRole.UserRole))
+            self.assertEqual("General options", item.data(Qt.ItemDataRole.UserRole))
+            self.window.show_page("Libraries")
             self.window.navigation.setCurrentItem(item)
             self.app.processEvents()
-            self.assertEqual(self.window.page_indexes[name], self.window.stack.currentIndex())
+            self.assertEqual(self.window.page_indexes["General options"], self.window.stack.currentIndex())
+            self.window.show_page(name)
             self.assertTrue(self.window.save_button.isVisibleTo(self.window))
         self.assertIsNone(self.window.stack.widget(
             self.window.page_indexes["Safety and location"]).findChild(QTabWidget))
@@ -1205,7 +1301,11 @@ class QtWorkflowTests(unittest.TestCase):
         self.window.show_page("General options")
         self.app.processEvents()
         self.assertTrue(self.window.poll_spin.isVisible())
+        self.assertFalse(self.window.maintenance_button.isVisible())
+        self.window.show_page("Help & about")
+        self.app.processEvents()
         self.assertTrue(self.window.maintenance_button.isVisible())
+        self.window.show_page("General options")
         self.window.poll_spin.setValue(30)
         self.assertTrue(self.window._settings_dirty)
         self.assertEqual(30, self.window._collect_config()["monitor"]["poll_seconds"])

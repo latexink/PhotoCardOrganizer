@@ -11,6 +11,28 @@ from photocard.organizer import Organizer
 
 
 class LibraryJobsTests(unittest.TestCase):
+    def test_folder_import_reuses_legacy_merge_receipt_and_completes_backup(self):
+        from photocard.discovery import folder_import_source
+        source = self.source_a / "clip.mp4"
+        source.write_bytes(b"synthetic video")
+        self.config["monitor"]["settle_seconds"] = 0
+        self.config["local_history"]["directory"] = str(self.root / "local")
+        plan = build_library_job(self.config, [self.source_a])
+        execute_library_job(plan, local_root=self.root / "local")
+        destination = plan.entries[0].destination
+        self.config["replica_destinations"] = [{"id": "clone", "name": "Clone", "root": str(self.backup),
+            "required": True, "enabled": True, "include_history": True, "conflict_policy": "block"}]
+        config = normalize_config(self.config)
+        with patch.object(Organizer, "_hash_file", side_effect=AssertionError("No content comparison needed")):
+            organizer = Organizer(config)
+            result = organizer.scan_card(folder_import_source(self.source_a))
+        self.assertEqual(1, result.imported)
+        self.assertEqual(0, result.failed)
+        self.assertFalse((self.library / "Conflicts").exists())
+        self.assertEqual(source.read_bytes(), (self.backup / destination.relative_to(self.library)).read_bytes())
+        second = Organizer(config).scan_card(folder_import_source(self.source_a))
+        self.assertEqual(0, second.imported)
+
     def test_size_only_migration_preserves_source_without_hashing(self):
         source = self.source_a / "photo.jpg"
         source.write_bytes(b"synthetic media")
@@ -22,6 +44,23 @@ class LibraryJobsTests(unittest.TestCase):
         self.assertEqual(source.read_bytes(), (target / source.name).read_bytes())
         self.assertEqual(records[0]["sha256"], "")
         self.assertEqual(records[0]["verification"], "size")
+
+    def test_changed_legacy_merge_destination_is_not_reused(self):
+        from photocard.discovery import folder_import_source
+        source = self.source_a / "clip.mp4"
+        source.write_bytes(b"original video")
+        self.config["monitor"]["settle_seconds"] = 0
+        self.config["local_history"]["directory"] = str(self.root / "local")
+        plan = build_library_job(self.config, [self.source_a])
+        execute_library_job(plan, local_root=self.root / "local")
+        destination = plan.entries[0].destination
+        destination.write_bytes(b"changed destination content")
+        result = Organizer(self.config).scan_card(folder_import_source(self.source_a))
+        self.assertEqual(1, result.imported)
+        self.assertEqual(b"changed destination content", destination.read_bytes())
+        conflicts = list((self.library / "Conflicts").rglob("*.mp4"))
+        self.assertEqual(1, len(conflicts))
+        self.assertEqual(source.read_bytes(), conflicts[0].read_bytes())
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

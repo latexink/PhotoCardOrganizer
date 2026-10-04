@@ -53,7 +53,8 @@ def main():
                     window.grab().save(str(audit / f"{slug}-{width}.png"))
                     asset_names = {"Libraries": "libraries", "Integrity": "integrity",
                         "Organization": "organization", "Safety and location": "backups",
-                        "General options": "general", "Travel sync": "travel"}
+                        "General options": "general", "Dashboard": "sources",
+                        "Help & about": "help", "Activity": "activity"}
                     if width == 1440 and page in asset_names:
                         window.grab().save(str(output / f"{asset_names[page]}.png"))
                 window.show_page("Safety and location")

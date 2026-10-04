@@ -111,12 +111,15 @@ def scan_library(
     *,
     progress_callback: ProgressCallback | None = None,
     cancel_event: threading.Event | None = None,
+    conflict_folder: str = "Conflicts",
+    include_conflicts: bool = False,
 ) -> list[LibraryItem]:
     library_root = Path(root).expanduser().resolve()
     if not library_root.is_dir():
         raise ValueError(f"Library folder does not exist: {library_root}")
     classified = extension_map(media_rules)
     partition_markers = _media_partition_markers(media_rules)
+    conflict_root = (library_root / conflict_folder).resolve()
     candidates: list[tuple[Path, str]] = []
     for current_root, directory_names, file_names in os.walk(library_root):
         if cancel_event is not None and cancel_event.is_set():
@@ -126,6 +129,7 @@ def scan_library(
             for name in directory_names
             if name != ".photocard-organizer"
             and not (Path(current_root) / name).is_symlink()
+            and (include_conflicts or (Path(current_root) / name).resolve() != conflict_root)
         ]
         for filename in file_names:
             path = Path(current_root) / filename

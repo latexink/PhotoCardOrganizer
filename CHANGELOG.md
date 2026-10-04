@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0.dev2 - Simpler library workflows, 2026-10-04
+
+- Reduced the sidebar to Libraries, Sources, Activity, Conflicts, Settings and Help.
+- Use Add files for both folder imports and combining collections. Copy remains the default; Move requires confirmation.
+- Kept import choices separate from saved settings. Saving an import layout for its receiving library is now an explicit option.
+- Added a direct Folder rules action for the selected library and retained optional shared-folder tools under Advanced.
+- Combined saved incoming folders and older laptop profiles in Sources without changing their identities or enabling automatic imports.
+- Recognize unchanged files recorded by older merge jobs without copying them again; required backups still complete before a move can remove a source.
+- Exclude conflict-review files from exports unless explicitly included.
+- Distinguish recent activity messages from saved transfer records and provide a button to open those records.
+- Rewrote the README and refreshed the PDF guide, labels and screenshots. The guide uses short task steps and separate cautions.
+- Source preview only. No new installer or changes to the user's installed application or photo libraries.
+
 ## 0.12.0.dev1 - Consistent navigation preview, 2026-10-04
 
 - Replaced the mixed sidebar and secondary navigation tabs with direct sidebar pages under Sources, Transfers and Settings.

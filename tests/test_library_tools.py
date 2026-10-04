@@ -19,6 +19,20 @@ from photocard.models import Capacity
 
 
 class LibraryToolTests(unittest.TestCase):
+    def test_export_scan_excludes_configured_conflicts_unless_requested(self):
+        from photocard.config import normalize_config
+        root = self.base / "library"
+        root.mkdir()
+        (root / "clip.mp4").write_bytes(b"video")
+        conflict = root / "Review" / "Conflicts"
+        conflict.mkdir(parents=True)
+        (conflict / "clip.mp4").write_bytes(b"other video")
+        rules = normalize_config({"destination_root": str(root)})["media_rules"]
+        normal = scan_library(root, rules, conflict_folder="Review/Conflicts")
+        expanded = scan_library(root, rules, conflict_folder="Review/Conflicts", include_conflicts=True)
+        self.assertEqual([Path("clip.mp4")], [item.relative_path for item in normal])
+        self.assertEqual(2, len(expanded))
+
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()
         self.base = Path(self.temporary.name)

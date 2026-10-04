@@ -828,6 +828,26 @@ class Organizer:
                 if not self.dry_run:
                     self.manifest.clear_pending(source_key)
 
+        if destination is None and card.source_type == "folder":
+            legacy = self.manifest.library_copy_receipt(source)
+            if legacy:
+                recorded = Path(legacy["destination"])
+                try:
+                    matches = (recorded == requested_destination and recorded.is_relative_to(self.destination_root)
+                        and not self._is_link_like(recorded)
+                        and self._matches_receipt(source_stat, legacy["source"])
+                        and self._matches_receipt(recorded.stat(), legacy["copied"]))
+                except OSError:
+                    matches = False
+                if matches:
+                    destination = recorded
+                    resumed_primary = True
+                    if not self.dry_run:
+                        self.manifest.record_pending(source_key=source_key, card_id=card.card_id,
+                            source_path=source, destination_path=destination,
+                            source_size=source_stat.st_size, source_mtime_ns=source_stat.st_mtime_ns)
+                        self.manifest.record_pending_copy(source_key, source_stat, recorded.stat(), None)
+
         if destination is None:
             destination, content_hash, conflict_info = self._resolve_conflict(
                 card, source, requested_destination, comparison_algorithm

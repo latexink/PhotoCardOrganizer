@@ -133,14 +133,12 @@ def initial_import_summary(card: CardMarker, config: dict, organization: str) ->
             )
         )
         checksum_label = {
+            "size": "File size and source-change checks",
             "sha256": "SHA-256",
             "sha512": "SHA-512",
             "blake2b": "BLAKE2b",
         }.get(algorithm, algorithm.upper())
-        verification = (
-            f"{checksum_label} checksum; "
-            "delete source only after required copies and logs succeed"
-        )
+        verification = f"{checksum_label}{' checksum' if algorithm != 'size' else ''}; remove source only after required copies and records succeed"
     else:
         algorithm = str(
             config["safety"].get("copy_verification", "size")

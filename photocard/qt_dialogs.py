@@ -624,9 +624,9 @@ class CardProfileDialog(QDialog):
 
 
 class LibraryOrganizationDialog(QDialog):
-    def __init__(self, parent, overrides, defaults):
+    def __init__(self, parent, overrides, defaults, *, title="Folder rules"):
         super().__init__(parent)
-        self.setWindowTitle("Library organization")
+        self.setWindowTitle(title)
         self.resize(660, 580)
         layout = QVBoxLayout(self)
         tabs = QTabWidget()
@@ -958,7 +958,7 @@ class DigestInboxDialog(QDialog):
         self.original = inbox or {}
         self.result_inbox: dict | None = None
         self.setWindowTitle(
-            "Edit watched folder" if inbox else "Add watched folder"
+            "Edit folder" if inbox else "Add folder"
         )
         self.setMinimumWidth(710)
         layout = QVBoxLayout(self)
@@ -991,7 +991,7 @@ class DigestInboxDialog(QDialog):
             bool(self.original.get("include_subfolders", True))
         )
         self.auto_digest_check = QCheckBox(
-            "Import new files automatically (copy only)"
+            "Watch this folder (copy new files automatically)"
         )
         self.auto_digest_check.setChecked(
             bool(self.original.get("auto_digest", False))
@@ -1030,7 +1030,7 @@ class DigestInboxDialog(QDialog):
 
         form.addRow("Folder name", self.name_edit)
         form.addRow("Incoming media folder", root_widget)
-        form.addRow("Master-library subfolder (optional)", self.prefix_edit)
+        form.addRow("Subfolder (optional)", self.prefix_edit)
         form.addRow("Camera name override (optional)", self.camera_edit)
         form.addRow("Source-file handling", self.action_combo)
         form.addRow("", self.recursive_check)
