@@ -2253,8 +2253,8 @@ class PhotoCardApp(QMainWindow):
         for index in range(3):
             value = history_segments[index] if index < len(history_segments) else ""
             combo = self._segment_combo(value)
-            combo.setMinimumContentsLength(21)
-            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+            combo.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
             combo.setToolTip(
                 f"Session-record folder level {index + 1}. Levels are created inside the card's transfer-history folder."
             )

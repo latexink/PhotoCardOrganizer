@@ -9,6 +9,7 @@
 - Grouped General into monitoring, portable settings and installation, with advanced monitoring collapsed.
 - Combined travel libraries and shared transfer folders on one page; editing and forgetting sources live in More menus.
 - Disabled selection-only actions until an item is selected, corrected tab ampersands and updated screenshots and the PDF guide.
+- Sized record-folder dropdowns from actual label widths instead of estimated character widths, fixing Linux font clipping caught by CI.
 - Transfer behavior and configuration schema are unchanged. Source preview only; no new installer or local installation.
 
 ## 0.11.3.dev3 - Interface preview, 2026-10-03

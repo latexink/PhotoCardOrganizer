@@ -1045,13 +1045,15 @@ class QtWorkflowTests(unittest.TestCase):
         self.window.resize(980, 660)
         self.window.show_page("Safety and location")
         self.window.record_options_button.setChecked(True)
-        for combo in self.window.history_segment_combos:
-            longest = max(range(combo.count()), key=lambda index:
-                combo.fontMetrics().horizontalAdvance(combo.itemText(index)))
-            combo.setCurrentIndex(longest)
-            self.app.processEvents()
-            self.assertLessEqual(combo.fontMetrics().horizontalAdvance(combo.currentText()),
-                                 combo.lineEdit().contentsRect().width() - 8)
+        for stylesheet in ("", "QComboBox { font-family: monospace; }"):
+            for combo in self.window.history_segment_combos:
+                combo.setStyleSheet(stylesheet)
+                longest = max(range(combo.count()), key=lambda index:
+                    combo.fontMetrics().horizontalAdvance(combo.itemText(index)))
+                combo.setCurrentIndex(longest)
+                self.app.processEvents()
+                self.assertLessEqual(combo.fontMetrics().horizontalAdvance(combo.currentText()),
+                                     combo.lineEdit().contentsRect().width() - 8)
 
     def test_collapsed_settings_preserve_values_without_dirtying_config(self) -> None:
         before = self.window._collect_config()
