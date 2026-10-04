@@ -1053,7 +1053,8 @@ class QtWorkflowTests(unittest.TestCase):
                 combo.setCurrentIndex(longest)
                 self.app.processEvents()
                 self.assertLessEqual(combo.fontMetrics().horizontalAdvance(combo.currentText()),
-                                     combo.lineEdit().contentsRect().width() - 8)
+                                     combo.lineEdit().contentsRect().width() - 8,
+                                     (stylesheet, combo.currentText(), combo.width(), combo.sizeHint().width()))
 
     def test_collapsed_settings_preserve_values_without_dirtying_config(self) -> None:
         before = self.window._collect_config()
