@@ -11,7 +11,7 @@
 - Exclude conflict-review files from exports unless explicitly included.
 - Distinguish recent activity messages from saved transfer records and provide a button to open those records.
 - Rewrote the README and refreshed the PDF guide, labels and screenshots. The guide uses short task steps and separate cautions.
-- Source preview only. No new installer or changes to the user's installed application or photo libraries.
+- Windows testing installer available. No changes to real photo libraries; clean-install, repair and uninstall checks remain outstanding.
 
 ## 0.12.0.dev1 - Consistent navigation preview, 2026-10-04
 

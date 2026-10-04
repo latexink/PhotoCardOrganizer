@@ -23,9 +23,9 @@ and optional background monitoring.
 
 ## Current Preview
 
-**0.12.0.dev2** simplifies the menus and folder-import workflow. This is a source
-preview, not a new installer. The latest packaged preview is **0.12.0.dev1**;
-its menus differ from the screenshots and guide below.
+**0.12.0.dev2** simplifies the menus and folder-import workflow. A Windows testing
+installer is available with the guide below. Keep independent backups when
+testing a preview; installer lifecycle checks remain incomplete.
 
 [Downloads](https://github.com/latexink/PhotoCardOrganizer/releases) ·
 [Current PDF guide](output/pdf/PhotoCardOrganizer-0.12.0.dev2-User-Guide.pdf) ·
@@ -77,7 +77,7 @@ Conflicts are kept locally for review and excluded from exports by default.
 Keep an independent backup, especially while testing a preview. This release is
 not a confirmed fix for the native 0.11.2 crashes. Previous installer lifecycle
 checks were limited by Sandbox Application Control; see the
-[packaged-preview validation record](docs/VALIDATION-0.12.0.dev1.md).
+[preview validation record](docs/VALIDATION-0.12.0.dev2.md).
 
 ## Run From Source
 

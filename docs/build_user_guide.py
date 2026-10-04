@@ -454,7 +454,7 @@ def build_story() -> list:
     if ".dev" in VERSION:
         diagnostic_pages += [p(f"About this preview: {VERSION}", "h1"),
                   p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
-                  p(f"This guide describes source preview {VERSION}. No new installer accompanies this revision; the latest packaged preview is 0.12.0.dev1 and has different menus. Windows Sandbox Application Control blocked earlier isolated installer tests; protection was not bypassed. Linux package, physical USB-drive and installer lifecycle testing remain incomplete. Source tests are not substitutes for those checks."),
+                  p(f"This guide describes testing preview {VERSION}, with a Windows installer. Windows Sandbox Application Control blocked earlier isolated installer tests; protection was not bypassed. Linux source tests passed, but Linux packages, physical USB-drive and full installer lifecycle testing remain incomplete. Source tests and packaged startup are not substitutes for those checks."),
                   p("Use the sidebar for Libraries, Sources, Activity, Conflicts, Settings and Help. Libraries > Check files provides optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Copy and keep originals to leave a separate library behind."),
                   p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
                   p("The separate 0.11.3.dev1 diagnostic ZIP is still available for crash investigation. If you are using that older package, extract it and start PhotoCardOrganizer-Diagnostic.bat to keep its settings separate. It does not contain an installer and does not include all the changes described here."),
@@ -556,7 +556,7 @@ def build_story() -> list:
             "When ExifTool is available on PATH, it expands RAW and video metadata support. Files still transfer without it; unavailable fields fall back to other metadata readers, file time, or the retained card profile.",
         ),
         p("Installation maintenance", "h2"),
-        p("Keep the downloaded Installer file for Windows maintenance. Run it again to repair, upgrade or uninstall. Help > Manage installation opens the registered uninstaller; Windows Installed apps offers the same action. Uninstall preserves settings, profiles and logs by default and does not remove imported media. This source preview has no new installer; use a guide matching your installed version."),
+        p("Keep the downloaded Installer file for Windows maintenance. Run it again to repair, upgrade or uninstall. Help > Manage installation opens the registered uninstaller; Windows Installed apps offers the same action. Uninstall preserves settings, profiles and logs by default and does not remove imported media. Use a guide matching your installed version."),
         PageBreak(),
     ]
 
@@ -1003,7 +1003,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
-                ["0.12.0.dev2", "Source preview", "Six main pages, one Add files workflow, temporary import choices and preserved older source identities. No new installer."],
+                ["0.12.0.dev2", "Testing preview", "Six main pages, one Add files workflow, temporary import choices and preserved older source identities. Windows installer."],
                 ["0.12.0.dev1", "Testing preview", "One sidebar, compact source actions, explicit move/copy choices and contextual settings controls. Windows installer; lifecycle checks incomplete."],
                 ["0.11.3 previews", "Testing / source", "Manual file checks, fewer reads, direct library actions and simpler settings. Some previews were not packaged; installer testing remained limited. Native crashes were not confirmed fixed."],
                 ["0.11.2", "2026-09-16", "On-demand library sizes, drive capacity visibility, and optional SHA-256 migration verification."],

@@ -1,7 +1,7 @@
-# 0.12.0.dev2 Source Preview Checks
+# 0.12.0.dev2 Testing Preview Checks
 
-Checked on Windows on 2026-10-04. Real photo libraries, user settings and the
-installed application were not changed.
+Checked on Windows on 2026-10-04. Real photo libraries were not changed. The
+user-authorized local upgrade completed, with the settings file unchanged.
 
 ## Completed
 
@@ -22,16 +22,37 @@ installed application were not changed.
 - Exports exclude the configured conflict folder unless explicitly requested.
 - Reviewed the final diff and refreshed the GitHub description. Historical PDF
   guides remain unchanged; the previous README is archived separately.
+- Linux CI passed 308 tests with two expected skips and the CLI version check
+  for application source `1a1bb31157502adb1ce37ceaf4eee19dd485cd62`:
+  <https://github.com/latexink/PhotoCardOrganizer/actions/runs/37231536949>.
+- All 12 packaging tests passed. Reused the completed source tests instead of
+  repeating them during packaging; application code did not change afterward.
+- Packaged GUI startup passed all 14 internal pages on Qt 6.11.2.
+- Defender custom scans of the application bundle and installer found no threats.
+  Antivirus and real-time protection were enabled; no exclusions were added.
+- Built the versioned Inno Setup installer. The restricted compiler invocation
+  was denied; compiling the same tested bundle with approved access succeeded.
+- Local upgrade from 0.12.0.dev1 completed with exit code 0 and no restart.
+  Backed up the config beforehand, then verified its SHA-256 remained unchanged.
+- Installed version and disposable GUI check passed. Existing desktop and Start
+  Menu shortcuts are present. No normal import session was launched.
+- Installed and source PDF hashes match. Revised guide pages were rendered and
+  visually checked.
+
+## Files
+
+- Installer: `artifacts/windows/PhotoCardOrganizer-Installer-0.12.0.dev2.exe`
+- Size: 36,917,708 bytes
+- Installer SHA-256: `3c2c461c23098a0f2a18b20b31d47269de3106c66a2c9c505b2f7704097076e4`
+- Guide: `output/pdf/PhotoCardOrganizer-0.12.0.dev2-User-Guide.pdf`
+- Guide SHA-256: `7bee9cfbb7f23c6bdfd79ecec800051e31c7138e8875fbba8ed4122d1b9e3a13`
 
 ## Limits
 
-This is a source preview, not a new installer. No Windows build, Defender scan,
-installation, upgrade, repair or uninstall was performed for this revision.
-The latest packaged preview is still 0.12.0.dev1.
-
-Linux validation is provided by the cross-platform GitHub workflow after pushing;
-its result must be checked separately. Physical USB-drive and installer lifecycle
-checks remain outstanding. This is not a confirmed fix for the native 0.11.2 crashes.
+Clean installation, repair, uninstall and physical USB-drive tests were not
+performed for this revision. The successful local upgrade is not a substitute
+for the full isolated lifecycle suite. Linux source checks passed, but Linux
+packages were not built. This is not a confirmed fix for the native 0.11.2 crashes.
 
 Network destinations still use mounted, operating-system-authenticated folders.
 No new remote login or sync service was introduced.
