@@ -128,7 +128,7 @@ class CardOnboardingWizard(QWizard):
         self.result_card: CardMarker | None = None
         self.result_profile: dict | None = None
         self.result_config: dict | None = None
-        self.setWindowTitle("Onboard card or drive")
+        self.setWindowTitle("Set up card or drive")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setMinimumSize(820, 650)
         self.setOption(QWizard.WizardOption.NoBackButtonOnStartPage, True)
@@ -637,7 +637,7 @@ class LibraryOrganizationDialog(QDialog):
             page_layout = QVBoxLayout(page)
             enabled = QCheckBox("Use separate organization for this library")
             enabled.setChecked(kind in overrides)
-            enabled.setToolTip("Unchecked uses the saved global Organization settings, including future changes.")
+            enabled.setToolTip("Unchecked uses the saved default folder rules from Settings, including future changes.")
             page_layout.addWidget(enabled)
             editor = QWidget()
             form = QFormLayout(editor)
@@ -793,10 +793,10 @@ class LibraryDestinationDialog(QDialog):
         form.addRow("Library name", self.name_edit)
         form.addRow("Library folder", root_widget)
         form.addRow("Location type", self.kind_combo)
-        self.organization_button = QPushButton("Organization settings...")
+        self.organization_button = QPushButton("Folder rules...")
         self.organization_button.setToolTip("Inherit global organization or choose separate folder and filename rules for this library. Saving does not move existing files.")
         self.organization_button.clicked.connect(self.edit_organization)
-        form.addRow("Organization", self.organization_button)
+        form.addRow("Folder layout", self.organization_button)
         form.addRow("", self.advanced_storage_check)
         form.addRow(self.storage_label, self.storage_combo)
         form.addRow("", self.enabled_check)
@@ -958,7 +958,7 @@ class DigestInboxDialog(QDialog):
         self.original = inbox or {}
         self.result_inbox: dict | None = None
         self.setWindowTitle(
-            "Edit Digest Inbox" if inbox else "Add Digest Inbox"
+            "Edit watched folder" if inbox else "Add watched folder"
         )
         self.setMinimumWidth(710)
         layout = QVBoxLayout(self)
@@ -973,7 +973,7 @@ class DigestInboxDialog(QDialog):
         root_widget, self.root_edit = directory_editor(
             self,
             str(self.original.get("root", "")),
-            title="Choose the folder to digest",
+            title="Choose the incoming folder",
         )
         self.prefix_edit = QLineEdit(
             str(self.original.get("destination_prefix", ""))
@@ -982,7 +982,7 @@ class DigestInboxDialog(QDialog):
         self.action_combo = choice_combo(
             [
                 ("Copy and leave source files", "copy"),
-                ("Move after verified digestion", "move"),
+                ("Move after completed import", "move"),
             ],
             str(self.original.get("action", "copy")),
         )
@@ -991,7 +991,7 @@ class DigestInboxDialog(QDialog):
             bool(self.original.get("include_subfolders", True))
         )
         self.auto_digest_check = QCheckBox(
-            "Monitor and digest new files automatically"
+            "Import new files automatically (copy only)"
         )
         self.auto_digest_check.setChecked(
             bool(self.original.get("auto_digest", False))
@@ -1001,7 +1001,7 @@ class DigestInboxDialog(QDialog):
         self.poll_spin.setDecimals(0)
         self.poll_spin.setSuffix(" sec")
         self.poll_spin.setValue(float(self.original.get("poll_seconds", 60)))
-        self.enabled_check = QCheckBox("Digest Inbox enabled")
+        self.enabled_check = QCheckBox("Folder enabled")
         self.enabled_check.setChecked(bool(self.original.get("enabled", True)))
 
         self.name_edit.setToolTip(
@@ -1013,7 +1013,7 @@ class DigestInboxDialog(QDialog):
         self.prefix_edit.setToolTip(LIBRARY_SUBFOLDER_HELP)
         self.camera_edit.setToolTip(CAMERA_NAME_HELP)
         self.action_combo.setToolTip(
-            "Copy preserves incoming files. Move removes each source only after all required copies, checksums, and transfer records succeed."
+            "Copy preserves incoming files. Move removes each source only after required copies, completion checks, backups, and transfer records succeed."
         )
         self.recursive_check.setToolTip(
             "Scan supported media in every subfolder while ignoring Photo Card Organizer state."
@@ -1028,7 +1028,7 @@ class DigestInboxDialog(QDialog):
             "Disabled inboxes remain configured but cannot be digested."
         )
 
-        form.addRow("Digest Inbox name", self.name_edit)
+        form.addRow("Folder name", self.name_edit)
         form.addRow("Incoming media folder", root_widget)
         form.addRow("Master-library subfolder (optional)", self.prefix_edit)
         form.addRow("Camera name override (optional)", self.camera_edit)
@@ -1079,21 +1079,21 @@ class DigestInboxDialog(QDialog):
         root = self.root_edit.text().strip()
         if not name:
             QMessageBox.critical(
-                self, "Missing name", "Enter a Digest Inbox name."
+                self, "Missing name", "Enter a name for the watched folder."
             )
             return
         if self.enabled_check.isChecked() and not root:
             QMessageBox.critical(
                 self,
                 "Missing incoming folder",
-                "Choose an incoming media folder before enabling this Digest Inbox.",
+                "Choose an incoming media folder before enabling this profile.",
             )
             return
         if root and paths_overlap(Path(root), self.primary_root):
             QMessageBox.critical(
                 self,
                 "Overlapping folders",
-                "The Digest Inbox must be separate from the managed master library.",
+                "The incoming folder must be separate from the receiving library.",
             )
             return
         candidate = {

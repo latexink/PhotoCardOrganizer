@@ -208,6 +208,27 @@ QCheckBox::indicator:checked {{
     border-color: {COLORS['accent']};
     image: url(:/qt-project.org/styles/commonstyle/images/standardbutton-apply-16.png);
 }}
+QRadioButton {{
+    spacing: 8px;
+    min-height: 24px;
+}}
+QRadioButton::indicator {{
+    width: 17px;
+    height: 17px;
+    border: 1px solid {COLORS['muted']};
+    border-radius: 9px;
+    background: {COLORS['surface_alt']};
+}}
+QRadioButton::indicator:hover {{
+    border-color: {COLORS['focus']};
+}}
+QRadioButton::indicator:checked {{
+    background: {COLORS['accent']};
+    border: 4px solid {COLORS['surface_alt']};
+}}
+QRadioButton:disabled {{
+    color: #777777;
+}}
 QGroupBox {{
     margin-top: 13px;
     padding: 16px 12px 12px 12px;
@@ -249,7 +270,7 @@ QListWidget#navigation {{
     padding: 8px;
 }}
 QListWidget#navigation::item {{
-    min-height: 32px;
+    min-height: 28px;
     padding: 0 10px;
     color: {COLORS['muted']};
     border-left: 3px solid transparent;

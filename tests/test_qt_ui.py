@@ -134,31 +134,86 @@ class QtWorkflowTests(unittest.TestCase):
             panel.compare_selected_backup()
             start.assert_called_once_with(False, backup_root=backup)
 
-    def test_secondary_tabs_route_to_named_pages(self):
+    def test_sidebar_routes_directly_to_all_main_pages(self):
+        for name in ("Cards and drives", "Digest inboxes", "Travel sync", "Dashboard",
+                     "Activity", "Conflict review", "Organization", "Safety and location",
+                     "General options", "Help & about", "Libraries"):
+            item = self.window.navigation_items[name]
+            self.window.navigation.setCurrentItem(item)
+            self.assertEqual(self.window.stack.currentIndex(), self.window.page_indexes[name])
+            self.assertEqual(item.data(Qt.ItemDataRole.UserRole), name)
+        self.assertFalse(hasattr(self.window, "area_tabs"))
+
+    def test_settings_footer_only_appears_for_settings_or_unsaved_changes(self):
+        self.window.show_page("Libraries")
+        self.assertTrue(self.window.settings_footer.isHidden())
+        self.window.show_page("General options")
+        self.assertFalse(self.window.settings_footer.isHidden())
+        self.window.poll_spin.setValue(self.window.poll_spin.value() - 1)
+        self.window.show_page("Libraries")
+        self.assertFalse(self.window.settings_footer.isHidden())
+        self.assertTrue(self.window.save_button.property("accent"))
+        self.window.poll_spin.setValue(self.window.config["monitor"]["poll_seconds"])
+        self.assertTrue(self.window.settings_footer.isHidden())
+
+    def test_card_identity_controls_live_in_general_settings(self):
         self.window.show_page("Cards and drives")
-        self.window.area_tabs.setCurrentIndex(1)
-        self.assertEqual(self.window.stack.currentIndex(), self.window.page_indexes["Digest inboxes"])
-        self.assertEqual(self.window.navigation.currentItem().text(), "Sources")
-        self.window.show_page("Conflict review")
-        self.assertEqual(self.window.navigation.currentItem().text(), "Transfers")
+        self.assertFalse(self.window.folder_name_edit.isVisibleTo(self.window))
+        self.window.show_page("General options")
+        self.window.identity_options_button.setChecked(True)
+        self.app.processEvents()
+        self.assertTrue(self.window.folder_name_edit.isVisibleTo(self.window))
+        self.window.identity_filename_edit.setText("other-identity.json")
+        self.assertEqual("other-identity.json", self.window._collect_config()["identification"]["identity_filename"])
+        self.assertTrue(self.window._settings_dirty)
+
+    def test_move_dialog_explicit_copy_choice_matches_plan_and_action(self):
+        dialog = LibraryJobDialog(self.window, self.window.config, [], mode="migrate")
+        try:
+            dialog.transfer_methods.button(1).setChecked(True)
+            self.assertTrue(dialog.keep_originals.isChecked())
+            self.assertEqual("Copy library", dialog.process.text())
+            self.assertFalse(dialog.process.isEnabled())
+            dialog.keep_originals.setChecked(False)
+            self.assertTrue(dialog.transfer_methods.button(0).isChecked())
+            self.assertEqual("Move library", dialog.process.text())
+        finally:
+            dialog.close()
+
+    def test_expanded_export_grouping_does_not_compress_or_overlap_controls(self):
+        self.window.resize(980, 660)
+        self.window.show_page("Library export")
+        self.window.export_group_options_button.setChecked(True)
+        self.app.processEvents()
+        controls = (self.window.bracket_seconds_spin, self.window.interval_seconds_spin,
+                    self.window.export_full_groups_check, self.window.export_group_folders_check)
+        for previous, current in zip(controls, controls[1:]):
+            self.assertLess(previous.geometry().bottom(), current.geometry().top())
+        self.assertLessEqual(self.window.height(), 660)
+        area = self.window.export_group_scroll
+        area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+        self.app.processEvents()
+        last = controls[-1]
+        origin = last.mapTo(area.viewport(), QPoint(0, 0))
+        self.assertLessEqual(origin.y() + last.height(), area.viewport().height())
 
     def test_library_workflows_use_actions_and_back_navigation_not_tabs(self):
         self.window.show()
         self.window.show_page("Libraries")
         self.app.processEvents()
-        self.assertTrue(self.window.area_tabs.isHidden())
+        self.assertFalse(hasattr(self.window, "area_tabs"))
         self.assertTrue(self.window.library_back_button.isHidden())
         self.assertFalse(self.window.reorganize_selected_library_button.isHidden())
         self.assertFalse(self.window.migrate_selected_library_button.isHidden())
         self.assertTrue(self.window.upgrade_library_button.isHidden())
         for page in ("Import or merge", "Library export", "Integrity"):
             self.window.show_page(page)
-            self.assertTrue(self.window.area_tabs.isHidden())
+            self.assertEqual(self.window.navigation.currentItem().text(), "Libraries")
             self.assertFalse(self.window.library_back_button.isHidden())
             self.window.library_back_button.click()
             self.assertEqual(self.window.page_indexes["Libraries"], self.window.stack.currentIndex())
         self.window.show_page("Cards and drives")
-        self.assertFalse(self.window.area_tabs.isHidden())
+        self.assertTrue(self.window.library_back_button.isHidden())
 
     def test_import_transfer_method_buttons_keep_existing_settings_in_sync(self):
         self.window.existing_transfer_methods.button(1).click()
@@ -182,7 +237,7 @@ class QtWorkflowTests(unittest.TestCase):
         self.window.show_page("Libraries")
         selected = self.window._selected_library_destination()
         self.assertEqual(str(selected["root"]), self.window.selected_library_path.text())
-        self.assertTrue(self.window.open_library_button.isHidden())
+        self.assertFalse(hasattr(self.window, "open_library_button"))
         self.window.show_page("Import or merge")
         self.window._set_existing_step(1)
         self.assertTrue(self.window.existing_camera_edit.isHidden())
@@ -347,7 +402,7 @@ class QtWorkflowTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            len(NAVIGATION_SECTIONS) + 3,
+            14,
             self.window.navigation.count(),
         )
         self.assertEqual("Libraries", self.window.navigation.item(0).text())
@@ -357,7 +412,7 @@ class QtWorkflowTests(unittest.TestCase):
             "Libraries",
             self.window.navigation.currentItem().data(Qt.ItemDataRole.UserRole),
         )
-        self.assertEqual("Library export", self.window.area_tabs.tabData(self.window.area_tabs.currentIndex()))
+        self.assertEqual(self.window.page_indexes["Library export"], self.window.stack.currentIndex())
         self.assertIn(
             'QPushButton[accent="true"]:disabled',
             self.app.styleSheet(),
@@ -1036,7 +1091,7 @@ class QtWorkflowTests(unittest.TestCase):
             self.window.navigation.setCurrentItem(item)
             self.app.processEvents()
             self.assertEqual(self.window.page_indexes[name], self.window.stack.currentIndex())
-            self.assertFalse(self.window.area_tabs.isVisibleTo(self.window))
+            self.assertTrue(self.window.save_button.isVisibleTo(self.window))
         self.assertIsNone(self.window.stack.widget(
             self.window.page_indexes["Safety and location"]).findChild(QTabWidget))
         organization_tabs = self.window.stack.widget(

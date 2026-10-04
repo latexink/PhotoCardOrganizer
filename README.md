@@ -24,7 +24,7 @@ background monitoring.
 - Track completed transfers and resume supported interrupted library operations.
 
 Card and folder imports default to Copy. Moving a library defaults to Move, with a
-Keep originals option. File-changing operations require confirmation; moves retain
+Copy and keep originals option. File-changing operations require confirmation; moves retain
 sources when required copies, backups, or records fail. Keep an independent backup,
 especially while testing a new workflow.
 
@@ -38,14 +38,17 @@ especially while testing a new workflow.
 
 ### Current Preview
 
-`0.11.3.dev4` groups the interface into Libraries, Sources, Transfers, Settings
-and Help. Libraries has direct Add media, Export, Reorganize and Move actions.
-Less common maintenance lives in More. Import, export and file checks return to
-Libraries with a back button rather than a second row of tabs. Import offers
-visible Copy and Move choices, with advanced options collapsed.
-Settings pages are direct sidebar choices. Backups and free-space limits share
-one page, with records, retries and other advanced options tucked into expandable
-sections. Travel libraries and shared transfer folders now share one page, too.
+`0.12.0.dev1` uses one sidebar for Libraries, Sources, Transfers, Settings and
+Help. Source, transfer and settings pages are direct choices; there is no second
+navigation tab row. Libraries has direct Add media, Export, Reorganize and Move
+actions. More contains details, opening folders and maintenance. Import, export
+and file checks return to Libraries with a back button.
+Card and watched-folder pages use compact toolbars and More menus. Permanent
+card identity settings live in General. Save settings appears on settings pages
+or when changes need saving. Move and Copy are visible alternatives in import
+and relocation; final confirmations remain. Export grouping options expand when
+needed and scroll in smaller windows. Backups and free-space limits share one
+page, while travel sources and shared folders share another.
 Use Check files when you want to check saved checksums, create missing ones, or
 compare a library with a connected backup. Normal transfers check that copying
 finished, file sizes match, and sources did not change. They do not detect
@@ -61,7 +64,7 @@ release or a confirmed fix for the native
 unchanged. Use the preview guide for current workflows. The technical reference
 below is retained for the published 0.11.2 release and differs in some places.
 
-[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev4-User-Guide.pdf)
+[Source preview guide](output/pdf/PhotoCardOrganizer-0.12.0.dev1-User-Guide.pdf)
 
 Version 0.11.2 is an unsigned testing release. Use independent backups.
 

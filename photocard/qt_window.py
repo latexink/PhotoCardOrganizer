@@ -51,7 +51,6 @@ from PySide6.QtWidgets import (
     QSplitter,
     QStackedWidget,
     QSystemTrayIcon,
-    QTabBar,
     QTabWidget,
     QTableWidget,
     QTableView,
@@ -471,26 +470,25 @@ class PhotoCardApp(QMainWindow):
         self.navigation_items: dict[str, QListWidgetItem] = {}
         app = QApplication.instance()
         for section_name, page_names in NAVIGATION_SECTIONS:
-            section = QListWidgetItem(section_name)
-            section.setData(Qt.ItemDataRole.UserRole, page_names[0])
-            section.setSizeHint(QSize(0, 40))
-            section.setToolTip(NAVIGATION_TOOLTIPS[page_names[0]])
-            if app is not None:
-                section.setIcon(standard_icon(app, NAVIGATION_ICONS[page_names[0]]))
-            self.navigation.addItem(section)
-            if section_name == "Settings":
-                section.setFlags(section.flags() & ~Qt.ItemFlag.ItemIsSelectable)
-                section.setData(Qt.ItemDataRole.UserRole, None)
+            grouped = section_name in ("Sources", "Transfers", "Settings")
+            if grouped:
+                section = QListWidgetItem(section_name.upper())
+                section.setFlags(Qt.ItemFlag.NoItemFlags)
+                section.setSizeHint(QSize(0, 24))
+                self.navigation.addItem(section)
+            visible_pages = page_names if grouped else page_names[:1]
+            for name in visible_pages:
+                child = QListWidgetItem(PAGE_LABELS.get(name, name))
+                child.setData(Qt.ItemDataRole.UserRole, name)
+                child.setSizeHint(QSize(0, 30 if grouped else 36))
+                child.setToolTip(NAVIGATION_TOOLTIPS[name])
+                if app is not None:
+                    child.setIcon(standard_icon(app, NAVIGATION_ICONS[name]))
+                self.navigation.addItem(child)
+                self.navigation_items[name] = child
+            if not grouped:
                 for name in page_names:
-                    child = QListWidgetItem("    " + PAGE_LABELS.get(name, name))
-                    child.setData(Qt.ItemDataRole.UserRole, name)
-                    child.setSizeHint(QSize(0, 32))
-                    child.setToolTip(NAVIGATION_TOOLTIPS[name])
-                    self.navigation.addItem(child)
                     self.navigation_items[name] = child
-                continue
-            for name in page_names:
-                self.navigation_items[name] = section
         self.navigation.currentRowChanged.connect(self._navigation_changed)
         sidebar_layout.addWidget(self.navigation, 1)
         body_layout.addWidget(sidebar)
@@ -498,16 +496,16 @@ class PhotoCardApp(QMainWindow):
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        self.area_tabs = QTabBar()
-        self.area_tabs.setExpanding(False)
-        self.area_tabs.setUsesScrollButtons(True)
-        self.area_tabs.currentChanged.connect(self._area_tab_changed)
-        content_layout.addWidget(self.area_tabs)
         self.library_back_button = QPushButton("Libraries")
         self._add_icon(self.library_back_button, "back")
         self.library_back_button.setToolTip("Return to your libraries. Unsubmitted import choices are retained.")
         self.library_back_button.clicked.connect(lambda: self.show_page("Libraries"))
-        content_layout.addWidget(self.library_back_button, 0, Qt.AlignmentFlag.AlignLeft)
+        self.library_back_row = QWidget()
+        back_layout = QHBoxLayout(self.library_back_row)
+        back_layout.setContentsMargins(24, 8, 24, 0)
+        back_layout.addWidget(self.library_back_button)
+        back_layout.addStretch(1)
+        content_layout.addWidget(self.library_back_row)
         self.library_back_button.hide()
         self.stack = QStackedWidget()
         content_layout.addWidget(self.stack, 1)
@@ -530,7 +528,8 @@ class PhotoCardApp(QMainWindow):
         self._apply_tooltips()
         root_layout.addWidget(body, 1)
         root_layout.addWidget(self._build_progress_center())
-        root_layout.addWidget(self._build_footer())
+        self.settings_footer = self._build_footer()
+        root_layout.addWidget(self.settings_footer)
         self._connect_settings_dirty_tracking()
         self._set_settings_dirty(False)
 
@@ -568,7 +567,7 @@ class PhotoCardApp(QMainWindow):
         return progress_center
 
     def _build_integrity_page(self) -> None:
-        _page, layout = self._new_page("Integrity", "Integrity")
+        _page, layout = self._new_page("Integrity", "Check files")
         self.integrity_panel = IntegrityPanel(self, lambda: self.config, self._begin_integrity,
                                               lambda job: self.monitor.run_exclusive(job), self._finish_integrity)
         for button, icon in ((self.integrity_panel.verify, "refresh"), (self.integrity_panel.create, "add"),
@@ -625,6 +624,15 @@ class PhotoCardApp(QMainWindow):
         idle_form.addRow("Maximum idle-card scan interval", self.idle_scan_spin)
         idle_section, self.monitor_options_button = collapsible_section("Advanced monitoring", idle_options)
         form.addRow(idle_section)
+        identity_options = QWidget()
+        identity_form = QFormLayout(identity_options)
+        identity_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        identity_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        identity_form.addRow("Metadata folder", self.folder_name_edit)
+        identity_form.addRow("Identity filename", self.identity_filename_edit)
+        identity_form.addRow("Session-record folder", self.history_folder_edit)
+        identity_section, self.identity_options_button = collapsible_section("Card identity files", identity_options)
+        form.addRow(identity_section)
         self.import_settings_button = QPushButton("Import settings")
         self._add_icon(self.import_settings_button, "open")
         self.import_settings_button.setToolTip("Merge portable settings from another computer after confirmation, retaining this computer's local paths.")
@@ -659,11 +667,6 @@ class PhotoCardApp(QMainWindow):
         layout.setContentsMargins(24, 9, 24, 9)
         layout.setSpacing(8)
         app = QApplication.instance()
-        self.open_library_button = QPushButton("Open library")
-        self.open_library_button.setIcon(standard_icon(app, "open"))
-        self.open_library_button.setToolTip("Open the primary destination library.")
-        self.open_library_button.clicked.connect(self._open_library)
-        layout.addWidget(self.open_library_button)
         layout.addStretch(1)
         self.settings_state_label = QLabel("Settings saved")
         set_dynamic_class(self.settings_state_label, "muted")
@@ -709,6 +712,17 @@ class PhotoCardApp(QMainWindow):
         )
         self.save_button.style().unpolish(self.save_button)
         self.save_button.style().polish(self.save_button)
+        self._update_settings_footer()
+
+    def _update_settings_footer(self) -> None:
+        current = next((name for name, index in self.page_indexes.items()
+                        if index == self.stack.currentIndex()), "")
+        visible = self._settings_dirty or current in (
+            "Organization", "Safety and location", "General options", "Help & about"
+        )
+        self.settings_state_label.setVisible(visible)
+        self.save_button.setVisible(visible)
+        self.settings_footer.setVisible(visible)
 
     def _update_settings_dirty_state(self, *_args) -> None:
         if not self._dirty_tracking_ready or self._loading_controls:
@@ -763,7 +777,6 @@ class PhotoCardApp(QMainWindow):
 
     def _metric(self, label: str) -> tuple[QFrame, QLabel]:
         frame = QFrame()
-        frame.setProperty("class", "metric")
         layout = QVBoxLayout(frame)
         layout.setContentsMargins(18, 14, 18, 14)
         caption = QLabel(label.upper())
@@ -792,7 +805,7 @@ class PhotoCardApp(QMainWindow):
         return table
 
     def _build_dashboard_page(self) -> None:
-        _page, layout = self._new_page("Dashboard", "Dashboard")
+        _page, layout = self._new_page("Dashboard", "Overview")
         metrics = QHBoxLayout()
         destination, self.destination_capacity_label = self._metric("Destination")
         sources, self.card_summary_label = self._metric("Sources")
@@ -833,8 +846,10 @@ class PhotoCardApp(QMainWindow):
         self.dashboard_actions_layout = actions
         layout.addLayout(actions)
 
-        import_options = QGroupBox("Destination for this import")
+        layout.addWidget(section_heading("Destination for this import"))
+        import_options = QWidget()
         import_options_layout = QGridLayout(import_options)
+        import_options_layout.setContentsMargins(0, 0, 0, 0)
         self.import_library_combo = QComboBox()
         self.import_library_combo.setToolTip(
             "Choose any enabled local, remote-mounted, or removable library "
@@ -1099,12 +1114,11 @@ class PhotoCardApp(QMainWindow):
         self.remove_library_button.clicked.connect(
             self._remove_library_destination
         )
-        for button in (self.edit_library_button, self.open_selected_library_button,
-                       self.integrity_library_button):
-            actions.addWidget(button)
+        actions.addWidget(self.integrity_library_button)
         actions.addStretch(1)
         actions.addWidget(self.manage_library_button)
-        for button in (self.default_library_button, self.library_size_button,
+        for button in (self.edit_library_button, self.open_selected_library_button,
+                       self.default_library_button, self.library_size_button,
                        self.upgrade_library_button, self.resume_library_job_button,
                        self.remove_library_button):
             if button is self.remove_library_button:
@@ -1119,61 +1133,43 @@ class PhotoCardApp(QMainWindow):
         self._refresh_library_destinations()
 
     def _build_cards_page(self) -> None:
-        _page, layout = self._new_page("Cards and drives", "Cards and drives")
+        _page, layout = self._new_page("Cards and drives", "Cards & drives")
         actions = QHBoxLayout()
-        onboard = accent(QPushButton("Onboard card"))
+        onboard = accent(QPushButton("Add card"))
         self._add_icon(onboard, "add")
         onboard.setToolTip("Open the guided setup for a connected card or removable drive.")
-        onboard.clicked.connect(self._add_card)
-        offline = QPushButton("Add offline card")
-        self._add_icon(offline, "add")
-        offline.setToolTip("Retain settings for a card that is not connected.")
-        offline.clicked.connect(self._add_profile)
-        self.edit_card_button = QPushButton("Edit")
-        self._add_icon(self.edit_card_button, "edit")
+        add_menu = QMenu(onboard)
+        add_menu.addAction("Connected card or drive...", self._add_card)
+        add_menu.addAction("Offline card profile...", self._add_profile)
+        onboard.setMenu(add_menu)
+        self.card_more_button = QPushButton("More")
+        self.card_more_button.setToolTip("Edit or forget the selected card profile, or open its identity folder.")
+        more_menu = QMenu(self.card_more_button)
+        self.card_more_button.setMenu(more_menu)
+        self.edit_card_button = more_menu.addAction("Edit card...", self._edit_card)
         self.edit_card_button.setToolTip("Edit the selected card's retained name, source folders, transfer method, and camera override.")
-        self.edit_card_button.clicked.connect(self._edit_card)
-        self.open_identity_button = QPushButton("Open identity folder")
-        self._add_icon(self.open_identity_button, "open")
+        self.open_identity_button = more_menu.addAction("Open identity folder", self._open_identity)
         self.open_identity_button.setToolTip("Open the card metadata folder that contains its identity and transfer-session records.")
-        self.open_identity_button.clicked.connect(self._open_identity)
-        self.forget_profile_button = QPushButton("Forget profile")
-        self._add_icon(self.forget_profile_button, "remove")
+        more_menu.addSeparator()
+        self.forget_profile_button = more_menu.addAction("Forget profile...", self._forget_profile)
         self.forget_profile_button.setToolTip("Remove an offline retained profile from this computer. Files on the card are unchanged.")
-        self.forget_profile_button.setProperty("danger", True)
-        self.forget_profile_button.clicked.connect(self._forget_profile)
         actions.addWidget(onboard)
-        actions.addWidget(offline)
-        actions.addWidget(self.edit_card_button)
-        actions.addWidget(self.open_identity_button)
         actions.addStretch(1)
-        actions.addWidget(self.forget_profile_button)
+        actions.addWidget(self.card_more_button)
         layout.addLayout(actions)
         self.cards_table = self._card_table()
         self.cards_table.itemSelectionChanged.connect(self._update_card_action_state)
         layout.addWidget(self.cards_table, 1)
-        identity_group = QGroupBox("Card metadata stored at the card root")
-        identity_layout = QGridLayout(identity_group)
         identification = self.config["identification"]
         self.folder_name_edit = QLineEdit(identification["folder_name"])
         self.identity_filename_edit = QLineEdit(identification["identity_filename"])
         self.history_folder_edit = QLineEdit(identification["history_folder_name"])
         self.history_folder_edit.textChanged.connect(self._update_history_preview)
-        identity_layout.addWidget(QLabel("Metadata folder"), 0, 0)
-        identity_layout.addWidget(self.folder_name_edit, 0, 1)
-        identity_layout.addWidget(QLabel("Identity filename"), 0, 2)
-        identity_layout.addWidget(self.identity_filename_edit, 0, 3)
-        identity_layout.addWidget(QLabel("Session-record folder"), 0, 4)
-        identity_layout.addWidget(self.history_folder_edit, 0, 5)
-        identity_layout.setColumnStretch(1, 1)
-        identity_layout.setColumnStretch(3, 1)
-        identity_layout.setColumnStretch(5, 1)
-        layout.addWidget(identity_group)
 
     def _build_existing_library_page(self) -> None:
         _page, page_layout = self._new_page(
             "Import or merge",
-            "Import or merge",
+            "Add media",
         )
         workflow_header = QWidget()
         workflow_layout = QVBoxLayout(workflow_header)
@@ -1502,25 +1498,12 @@ class PhotoCardApp(QMainWindow):
         self._update_existing_preview()
 
     def _build_digest_inboxes_page(self) -> None:
-        _page, layout = self._new_page("Digest inboxes", "Digest inboxes")
-        summary = QFrame()
-        summary.setProperty("class", "preview")
-        summary_layout = QVBoxLayout(summary)
-        summary_title = QLabel("RETAINED INCOMING FOLDERS")
-        set_dynamic_class(summary_title, "muted")
-        summary_text = QLabel(
-            "Digest mixed folder structures from local, removable, shared, or synchronized folders. "
-            "Unchanged files are skipped from retained history; automatic digestion is copy-only."
-        )
-        summary_text.setWordWrap(True)
-        summary_layout.addWidget(summary_title)
-        summary_layout.addWidget(summary_text)
-        layout.addWidget(summary)
+        _page, layout = self._new_page("Digest inboxes", "Watched folders")
 
         self.digest_table = QTableWidget(0, 8)
         self.digest_table.setHorizontalHeaderLabels(
             (
-                "DIGEST INBOX",
+                "WATCHED FOLDER",
                 "FOLDER",
                 "ACTION",
                 "STATE",
@@ -1557,49 +1540,45 @@ class PhotoCardApp(QMainWindow):
         )
         layout.addWidget(self.digest_table)
 
-        actions = QGridLayout()
-        self.add_digest_button = accent(QPushButton("Add Digest Inbox"))
+        actions = QHBoxLayout()
+        self.add_digest_button = QPushButton("Add folder")
         self._add_icon(self.add_digest_button, "add")
         self.add_digest_button.setToolTip(
             "Retain an incoming folder and configure how its media enters the master library."
         )
         self.add_digest_button.clicked.connect(self._add_digest_inbox)
-        self.edit_digest_button = QPushButton("Edit selected")
-        self._add_icon(self.edit_digest_button, "edit")
+        self.digest_more_button = QPushButton("More")
+        self.digest_more_button.setToolTip("Edit, open, or forget the selected watched folder.")
+        more_menu = QMenu(self.digest_more_button)
+        self.digest_more_button.setMenu(more_menu)
+        self.edit_digest_button = more_menu.addAction("Edit folder...", self._edit_digest_inbox)
         self.edit_digest_button.setToolTip(
             "Edit the selected inbox without changing its retained digest identity or history."
         )
-        self.edit_digest_button.clicked.connect(self._edit_digest_inbox)
-        self.open_digest_button = QPushButton("Open inbox")
-        self._add_icon(self.open_digest_button, "open")
+        self.open_digest_button = more_menu.addAction("Open folder", self._open_digest_inbox)
         self.open_digest_button.setToolTip(
             "Open the selected incoming folder when it is currently available."
         )
-        self.open_digest_button.clicked.connect(self._open_digest_inbox)
-        self.remove_digest_button = QPushButton("Forget selected")
-        self._add_icon(self.remove_digest_button, "remove")
-        self.remove_digest_button.setProperty("danger", True)
+        more_menu.addSeparator()
+        self.remove_digest_button = more_menu.addAction("Forget folder...", self._remove_digest_inboxes)
         self.remove_digest_button.setToolTip(
             "Remove only the retained inbox profile. Source files, master files, and digest history remain unchanged."
         )
-        self.remove_digest_button.clicked.connect(self._remove_digest_inboxes)
-        self.run_digest_button = accent(QPushButton("Review and digest selected"))
+        self.run_digest_button = accent(QPushButton("Import new files"))
         self._add_icon(self.run_digest_button, "refresh")
         self.run_digest_button.setToolTip(
             "Review source handling, verification, backups, and destination before scanning selected inboxes."
         )
         self.run_digest_button.clicked.connect(self._digest_selected_inboxes)
-        actions.addWidget(self.add_digest_button, 0, 0)
-        actions.addWidget(self.edit_digest_button, 0, 1)
-        actions.addWidget(self.open_digest_button, 0, 2)
-        actions.addWidget(self.remove_digest_button, 0, 3)
-        actions.addWidget(self.run_digest_button, 1, 0, 1, 2)
-        actions.setColumnStretch(4, 1)
+        actions.addWidget(self.add_digest_button)
+        actions.addWidget(self.run_digest_button)
+        actions.addStretch(1)
+        actions.addWidget(self.digest_more_button)
         self.digest_actions_layout = actions
-        layout.addLayout(actions)
+        layout.insertLayout(2, actions)
 
         queue_header = QHBoxLayout()
-        queue_title = QLabel("DIGEST QUEUE")
+        queue_title = QLabel("FILE QUEUE")
         set_dynamic_class(queue_title, "muted")
         queue_header.addWidget(queue_title)
         self.digest_queue_count_label = QLabel("0 files")
@@ -1820,10 +1799,10 @@ class PhotoCardApp(QMainWindow):
         self._refresh_transfer_hubs()
 
     def _build_library_export_page(self) -> None:
-        _page, layout = self._new_page("Library export", "Library export")
-        controls = QFrame()
-        controls.setProperty("class", "preview")
+        _page, layout = self._new_page("Library export", "Export media")
+        controls = QWidget()
         controls_layout = QGridLayout(controls)
+        controls_layout.setContentsMargins(0, 0, 0, 0)
         self.export_library_label = QLabel(self.config["destination_root"])
         self.export_library_label.setWordWrap(True)
         self.export_library_label.setToolTip(
@@ -1854,10 +1833,12 @@ class PhotoCardApp(QMainWindow):
         )
         controls_layout.addWidget(QLabel("Library"), 0, 0)
         controls_layout.addWidget(self.export_library_combo, 0, 1, 1, 3)
-        controls_layout.addWidget(QLabel("Bracket / burst gap"), 1, 0)
-        controls_layout.addWidget(self.bracket_seconds_spin, 1, 1)
-        controls_layout.addWidget(QLabel("Interval maximum gap"), 1, 2)
-        controls_layout.addWidget(self.interval_seconds_spin, 1, 3)
+        group_options = QWidget()
+        group_form = QFormLayout(group_options)
+        group_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        group_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        group_form.addRow("Bracket / burst gap", self.bracket_seconds_spin)
+        group_form.addRow("Interval maximum gap", self.interval_seconds_spin)
         self.export_media_combo = choice_combo((("All media", "all"), *[(label, kind) for kind, label in MEDIA_LABELS.items()]), "all")
         self.export_media_combo.setToolTip("Limit exports to this media type. Group selection cannot add other types.")
         self.export_sidecars_check = QCheckBox("Include matching sidecars")
@@ -1889,6 +1870,11 @@ class PhotoCardApp(QMainWindow):
         controls_layout.setColumnStretch(1, 1)
         controls_layout.setColumnStretch(3, 1)
         layout.addWidget(controls)
+        self.export_group_scroll = scrollable(group_options)
+        self.export_group_scroll.setMinimumHeight(80)
+        self.export_group_scroll.setMaximumHeight(180)
+        group_section, self.export_group_options_button = collapsible_section("Capture grouping", self.export_group_scroll)
+        layout.addWidget(group_section)
 
         status_row = QHBoxLayout()
         self.export_status_label = QLabel(
@@ -1932,7 +1918,7 @@ class PhotoCardApp(QMainWindow):
         )
         layout.addWidget(self.export_table, 1)
 
-        export_options = QGridLayout()
+        export_options = QHBoxLayout()
         self.select_export_group_button = QPushButton(
             "Select detected group"
         )
@@ -1964,16 +1950,17 @@ class PhotoCardApp(QMainWindow):
             "Copy selected JPEG, RAW, video, and matching sidecar files into an editing folder. Existing files are never overwritten."
         )
         self.export_selected_button.clicked.connect(self._export_selected_captures)
-        export_options.addWidget(self.export_full_groups_check, 0, 0)
-        export_options.addWidget(self.export_group_folders_check, 0, 1)
-        export_options.addWidget(self.select_export_group_button, 1, 0)
+        group_form.addRow(self.export_full_groups_check)
+        group_form.addRow(self.export_group_folders_check)
+        group_options.setMinimumHeight(group_options.minimumSizeHint().height())
+        export_options.addWidget(self.select_export_group_button)
         self.export_select_all_button = QPushButton("Select all matching")
         self._add_icon(self.export_select_all_button, "add")
         self.export_select_all_button.setToolTip("Select every capture matching the current media and date filters.")
         self.export_select_all_button.clicked.connect(self.export_table.selectAll)
-        export_options.addWidget(self.export_select_all_button, 1, 1)
-        export_options.addWidget(self.export_selected_button, 1, 2)
-        export_options.setColumnStretch(2, 1)
+        export_options.addWidget(self.export_select_all_button)
+        export_options.addStretch(1)
+        export_options.addWidget(self.export_selected_button)
         self.export_options_layout = export_options
         layout.addLayout(export_options)
         self._refresh_import_library_choices()
@@ -2055,7 +2042,7 @@ class PhotoCardApp(QMainWindow):
         controls["remove_segment"].setEnabled(count > 1)
 
     def _build_organization_page(self) -> None:
-        _page, layout = self._new_page("Organization", "Organization")
+        _page, layout = self._new_page("Organization", "Default folder rules")
         tabs = QTabWidget()
         layout.addWidget(tabs, 1)
         for kind, media_label in MEDIA_LABELS.items():
@@ -2593,7 +2580,7 @@ class PhotoCardApp(QMainWindow):
         self._refresh_replicas()
 
     def _build_conflict_page(self) -> None:
-        _page, layout = self._new_page("Conflict review", "Conflict review")
+        _page, layout = self._new_page("Conflict review", "Conflicts")
         layout.setSpacing(6)
         self.conflict_page_size = 200
         self.conflict_page_index = 0
@@ -2720,7 +2707,7 @@ class PhotoCardApp(QMainWindow):
         self._refresh_conflicts()
 
     def _build_activity_page(self) -> None:
-        _page, layout = self._new_page("Activity", "Activity")
+        _page, layout = self._new_page("Activity", "History")
         self.activity_table = QTableWidget(0, 3)
         self.activity_table.setHorizontalHeaderLabels(("TIME", "LEVEL", "MESSAGE"))
         self.activity_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
@@ -2733,12 +2720,12 @@ class PhotoCardApp(QMainWindow):
         layout.addWidget(self.activity_table, 1)
         row = QHBoxLayout()
         row.addStretch(1)
-        clear = QPushButton("Clear activity")
+        clear = QPushButton("Clear visible history")
         self._add_icon(clear, "remove")
         clear.setToolTip("Clear only the visible in-memory activity list. Transfer records are unchanged.")
         clear.clicked.connect(lambda: self.activity_table.setRowCount(0))
         row.addWidget(clear)
-        layout.addLayout(row)
+        layout.insertLayout(2, row)
 
     def _build_help_page(self) -> None:
         _page, layout = self._new_page(
@@ -2746,7 +2733,8 @@ class PhotoCardApp(QMainWindow):
             "Help & about",
             scrollable_page=True,
         )
-        guide_group = QGroupBox("Documentation")
+        layout.addWidget(section_heading("Documentation"))
+        guide_group = QWidget()
         guide_layout = QVBoxLayout(guide_group)
         guide_status = QLabel(
             f"Photo Card Organizer {__version__} includes a version-matched PDF manual."
@@ -2778,7 +2766,8 @@ class PhotoCardApp(QMainWindow):
         guide_layout.addLayout(guide_actions)
         layout.addWidget(guide_group)
 
-        diagnostics_group = QGroupBox("Diagnostics")
+        layout.addWidget(section_heading("Diagnostics"))
+        diagnostics_group = QWidget()
         diagnostics_layout = QVBoxLayout(diagnostics_group)
         diagnostics_status = QLabel(
             "Errors are recorded locally. Detailed logging adds troubleshooting context without including media."
@@ -2818,7 +2807,8 @@ class PhotoCardApp(QMainWindow):
         diagnostics_layout.addLayout(diagnostics_actions)
         layout.addWidget(diagnostics_group)
 
-        about_group = QGroupBox("About")
+        layout.addWidget(section_heading("About"))
+        about_group = QWidget()
         about_layout = QVBoxLayout(about_group)
         name = QLabel("Photo Card Organizer")
         name.setObjectName("dialogTitle")
@@ -3040,10 +3030,6 @@ class PhotoCardApp(QMainWindow):
             return
         self.show_page(page_name)
 
-    def _area_tab_changed(self, index: int) -> None:
-        if index >= 0:
-            self.show_page(self.area_tabs.tabData(index))
-
     def show_page(self, name: str) -> None:
         index = self.page_indexes.get(name)
         if index is None:
@@ -3054,22 +3040,11 @@ class PhotoCardApp(QMainWindow):
             self.navigation.blockSignals(True)
             self.navigation.setCurrentItem(item)
             self.navigation.blockSignals(False)
-        pages = next(pages for _area, pages in NAVIGATION_SECTIONS if name in pages)
-        self.area_tabs.blockSignals(True)
-        while self.area_tabs.count():
-            self.area_tabs.removeTab(0)
-        for page in pages:
-            tab = self.area_tabs.addTab(PAGE_LABELS.get(page, page).replace("&", "&&"))
-            self.area_tabs.setTabData(tab, page)
-            self.area_tabs.setTabToolTip(tab, NAVIGATION_TOOLTIPS[page])
-        self.area_tabs.setCurrentIndex(pages.index(name))
-        self.area_tabs.blockSignals(False)
         library_area = name in ("Libraries", "Import or merge", "Library export", "Integrity")
-        settings_area = name in ("Organization", "Safety and location", "General options")
-        self.area_tabs.setVisible(not library_area and not settings_area and len(pages) > 1)
         self.library_back_button.setVisible(library_area and name != "Libraries")
-        if hasattr(self, "open_library_button"):
-            self.open_library_button.setVisible(not library_area)
+        self.library_back_row.setVisible(library_area and name != "Libraries")
+        if hasattr(self, "settings_footer"):
+            self._update_settings_footer()
         if name == "Digest inboxes":
             self._refresh_digest_inboxes()
         if hasattr(self, "edit_card_button"):

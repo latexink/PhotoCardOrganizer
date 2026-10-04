@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.0.dev1 - Consistent navigation preview, 2026-10-04
+
+- Replaced the mixed sidebar and secondary navigation tabs with direct sidebar pages under Sources, Transfers and Settings.
+- Kept import, export and file checks as focused library tasks with a Libraries back button.
+- Simplified card and watched-folder toolbars; editing, opening and forgetting profiles now use More menus.
+- Moved advanced card identity filenames into Settings > General, preserving existing values.
+- Show Save settings on settings pages or whenever changes are unsaved, rather than on every task.
+- Made Move and Copy explicit alternatives when relocating a library, retaining final confirmation and recovery behaviour.
+- Grouped export capture options in an expandable, scrollable section and removed decorative section frames.
+- Aligned page and dialog names, updated screenshots and the versioned PDF guide.
+- Source preview only. Transfer rules and saved data formats are unchanged; no new installer or local installation.
+
 ## 0.11.3.dev4 - Settings and travel interface preview, 2026-10-04
 
 - Made Default folder rules, Backups & policies and General direct sidebar choices, removing the extra Settings tab row.

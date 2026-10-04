@@ -6,8 +6,8 @@ from pathlib import Path
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, QTimer
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView,
-    QLabel, QMessageBox, QProgressBar, QPushButton, QTableView, QVBoxLayout,
+    QButtonGroup, QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QHeaderView,
+    QLabel, QMessageBox, QProgressBar, QPushButton, QRadioButton, QTableView, QVBoxLayout, QWidget,
 )
 
 from .qt_common import MEDIA_LABELS, ORGANIZATION_PRESETS
@@ -86,8 +86,12 @@ class ReorganizationDialog(DiagnosticDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
         root = Path(config["destination_root"])
+        heading = QLabel("Reorganize library")
+        heading.setObjectName("dialogTitle")
+        layout.addWidget(heading)
         title = QLabel(str(root))
         title.setWordWrap(True)
+        title.setProperty("class", "muted")
         layout.addWidget(title)
         form = QFormLayout()
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
@@ -97,7 +101,7 @@ class ReorganizationDialog(DiagnosticDialog):
         for name in ORGANIZATION_PRESETS:
             label = {"Media folder only": "Separate by media type", "Use current detailed rules": "Saved rules for this library"}.get(name, name)
             self.preset.addItem(label, name)
-        self.preset.insertItem(1, "Global rules from Organization", "Use global organization rules")
+        self.preset.insertItem(1, "Default folder rules from Settings", "Use global organization rules")
         self.preset.setCurrentIndex(self.preset.findData("Use current detailed rules"))
         self.preset.setToolTip("Saved library rules include its custom overrides. Global rules use the saved Organization settings. Other layouts preserve original filenames.")
         form.addRow("Folder layout", self.preset)
@@ -307,14 +311,43 @@ class LibraryJobDialog(DiagnosticDialog):
         self.setWindowTitle({"merge": "Merge library", "migrate": "Move library", "reorganize": "Consolidate library"}.get(mode, "Library operation"))
         self.resize(960, 650)
         layout = QVBoxLayout(self)
-        label = QLabel(f"Source: {', '.join(str(p) for p in sources)}\nDestination: {migration_target or config['destination_root']}")
-        label.setWordWrap(True)
-        layout.addWidget(label)
-        self.keep_originals = QCheckBox("Keep originals (copy instead of move)")
-        self.keep_originals.setVisible(mode == "migrate")
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+        heading = QLabel(self.windowTitle())
+        heading.setObjectName("dialogTitle")
+        layout.addWidget(heading)
+        details = QFormLayout()
+        details.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        for caption, value in (("From", ', '.join(str(p) for p in sources)),
+                               ("To", str(migration_target or config['destination_root']))):
+            label = QLabel(value)
+            label.setWordWrap(True)
+            label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            details.addRow(caption, label)
+        layout.addLayout(details)
+        self.keep_originals = QCheckBox("Keep originals (copy instead of move)", self)
+        self.keep_originals.hide()
         self.keep_originals.setToolTip("Migration moves the library by default. Enable this to leave a separate copy at its original location.")
         self.keep_originals.toggled.connect(self._invalidate_preview)
-        layout.addWidget(self.keep_originals)
+        self.transfer_method_row = QWidget()
+        transfer_layout = QHBoxLayout(self.transfer_method_row)
+        transfer_layout.setContentsMargins(0, 0, 0, 0)
+        transfer_layout.addWidget(QLabel("Transfer"))
+        self.transfer_methods = QButtonGroup(self)
+        for index, text in enumerate(("Move library", "Copy and keep originals")):
+            button = QRadioButton(text)
+            button.setToolTip("Remove the old library after a completed move." if index == 0
+                              else "Keep a separate library at the original location.")
+            self.transfer_methods.addButton(button, index)
+            transfer_layout.addWidget(button)
+        transfer_layout.addStretch(1)
+        self.transfer_methods.button(0).setChecked(True)
+        self.transfer_methods.idToggled.connect(
+            lambda index, checked: self.keep_originals.setChecked(index == 1) if checked else None
+        )
+        self.keep_originals.toggled.connect(lambda checked: self.transfer_methods.button(int(checked)).setChecked(True))
+        self.transfer_method_row.setVisible(mode == "migrate")
+        layout.addWidget(self.transfer_method_row)
         self.migration_checksum = QCheckBox("Verify migrated files with SHA-256")
         self.migration_checksum.setChecked(False)
         self.migration_checksum.hide()
@@ -332,8 +365,9 @@ class LibraryJobDialog(DiagnosticDialog):
             self.table.horizontalHeader().setSectionResizeMode(column, QHeaderView.ResizeMode.Stretch)
         self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.table.setColumnHidden(3, not (resume_plan and resume_plan.migration_checksum))
         layout.addWidget(self.table, 1)
-        self.status = QLabel("Preview not generated")
+        self.status = QLabel("Review the planned paths before starting. No files have been changed.")
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.progress = QProgressBar()
@@ -341,9 +375,9 @@ class LibraryJobDialog(DiagnosticDialog):
         layout.addWidget(self.progress)
         actions = QHBoxLayout()
         self.preview = QPushButton("Preview changes")
-        self.preview.setToolTip("Read files and calculate content identities without changing media.")
+        self.preview.setToolTip("Plan destination paths without changing files. Content is compared only for filename conflicts.")
         self.preview.clicked.connect(self.start_preview)
-        self.process = QPushButton("Confirm and process")
+        self.process = QPushButton({"migrate": "Move library", "merge": "Combine libraries"}.get(mode, "Reorganize"))
         self.process.setProperty("accent", True)
         self.process.setEnabled(False)
         self.process.clicked.connect(self.confirm_process)
@@ -366,12 +400,15 @@ class LibraryJobDialog(DiagnosticDialog):
             self.preview.setEnabled(False)
             self.migration_checksum.setEnabled(False)
             self.keep_originals.setEnabled(False)
+            self.transfer_method_row.setEnabled(False)
             self.status.setText("Saved plan loaded. Completed files will be checked before remaining work continues.")
 
     def _invalidate_preview(self):
         self.model.replace_rows([])
         self.plan = None
         self.process.setEnabled(False)
+        if self.mode == "migrate":
+            self.process.setText("Copy library" if self.keep_originals.isChecked() else "Move library")
         self.status.setText("Options changed; generate a new preview.")
 
     def start_preview(self):
@@ -380,6 +417,7 @@ class LibraryJobDialog(DiagnosticDialog):
         self._running = True
         self.migration_checksum.setEnabled(False)
         self.keep_originals.setEnabled(False)
+        self.transfer_method_row.setEnabled(False)
         keep_originals = self.keep_originals.isChecked()
         migration_checksum = self.migration_checksum.isChecked()
         self.plan = None
@@ -422,6 +460,7 @@ class LibraryJobDialog(DiagnosticDialog):
         self._running = False
         self.migration_checksum.setEnabled(self.resume_plan is None)
         self.keep_originals.setEnabled(self.resume_plan is None)
+        self.transfer_method_row.setEnabled(self.resume_plan is None)
         self.progress.hide()
         self.preview.setEnabled(self.resume_plan is None)
         if self._closing:
@@ -472,6 +511,7 @@ class LibraryJobDialog(DiagnosticDialog):
         self._processing = True
         self.migration_checksum.setEnabled(False)
         self.keep_originals.setEnabled(False)
+        self.transfer_method_row.setEnabled(False)
         self._running = True
         self._cancel.clear()
         self._result = {}

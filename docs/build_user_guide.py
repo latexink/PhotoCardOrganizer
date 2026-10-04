@@ -455,7 +455,7 @@ def build_story() -> list:
         diagnostic_pages += [p(f"About this preview: {VERSION}", "h1"),
                   p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
                   p(f"This guide describes the {VERSION} interface preview, which has not been packaged or installed. The earlier dev2 build passed startup and Defender checks, but Sandbox blocked its isolated installation tests. Linux and physical USB-drive testing remain outstanding. The installed app may still show the older layout. See docs/VALIDATION-0.11.3.dev2.md for the earlier build's recorded results."),
-                  p("The main areas are Libraries, Sources, Transfers, Settings and Help. Use Libraries > Check files for optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Keep originals if you want a copy instead."),
+                  p("Use the sidebar for Libraries, Sources, Transfers, Settings and Help. Libraries > Check files provides optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Copy and keep originals to leave a separate library behind."),
                   p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
                   p("The separate 0.11.3.dev1 diagnostic ZIP is still available for crash investigation. If you are using that older package, extract it and start PhotoCardOrganizer-Diagnostic.bat to keep its settings separate. It does not contain an installer and does not include all the changes described here."),
                   PageBreak()]
@@ -574,20 +574,20 @@ def build_story() -> list:
                 ["Transfers", "Conflicts", "Search, compare preserved files side by side and update review status."],
                 ["Settings", "Default folder rules", "Choose folder layouts, filename patterns and file types."],
                 ["Settings", "Backups & policies", "Backup destinations, free-space limits and expandable advanced options."],
-                ["Settings", "General", "Monitoring interval, portable settings and installation maintenance."],
+                ["Settings", "General", "Monitoring, card identity files, portable settings and installation maintenance."],
                 ["Help", "Help & about", "PDF manual, changelog, diagnostics, version and project credits."],
             ],
             [1.1 * inch, 1.35 * inch, 4.6 * inch],
         ),
         Spacer(1, 10),
-        p("Libraries puts Add media, Export media, Reorganize library and Move library in one toolbar. Open folder and Check files act on the selected library. More contains default-library preferences, size refresh, metadata maintenance, resume and forget actions. Import, export and file checks have a Libraries back button instead of duplicate tabs. Progress and Save settings remain visible below each page."),
-        p("Settings pages are in the sidebar. Backups & policies keeps backups and free space visible, with conflict naming, retries, records and place names in expandable sections. General groups monitoring, settings files and installation. Collapsing advanced options keeps their saved values."),
+        p("The sidebar is the only main navigation. Libraries provides Add media, Export media, Reorganize library and Move library. Check files acts on the selected library; More contains details, Open folder, defaults and maintenance. Import, export and checks have a Libraries back button. Progress stays visible. Save settings appears on settings pages or whenever changes are unsaved."),
+        p("Sources and Transfers pages are direct sidebar choices. Cards and watched folders use compact toolbars with secondary actions under More. General includes advanced card identity filenames. Backups & policies keeps backups and free space visible; other options expand when needed. Collapsing sections preserves their values."),
         PageBreak(),
     ]
 
     story += chapter(
         "3. Onboard a card or drive",
-        "Set up a card before its first import. The wizard pauses monitoring while you choose its settings. It asks for confirmation before writing the card's identification file or scanning for media.",
+        "Choose Sources > Cards & drives > Add card > Connected card or drive. The setup wizard pauses monitoring while you choose settings, and asks for confirmation before writing identity files or scanning. Add card > Offline card profile saves a profile for later connection; it does not write to a disconnected card.",
     )
     story += steps(
         [
@@ -704,9 +704,9 @@ def build_story() -> list:
         p("Merge library", "h2"),
         p("In Libraries, select the receiving library and choose <b>Add media > Combine another library</b>. Choose the source, save pending settings and review the proposed paths. Saved organization rules apply to incoming files; existing destination media keeps its layout. Content comparisons occur only on actual destination conflicts, not throughout the library."),
         p("Different filenames remain separate files. Both exact-content and different-content destination conflicts are preserved in the local Conflicts folder with the intended hierarchy. Source media stays in place for copy operations. Recorded source identity helps a repeated merge skip completed copies without hashing again."),
-        p("Confirm and process copies to temporary files before completing each transfer, checks file sizes and source changes, and records completed work. Combining libraries does not automatically create checksums. Use Check files afterward if you need them. Cancel stops further work; completed transfers remain recorded for a later retry."),
+        p("Combine libraries asks for confirmation, copies to temporary files before completing each transfer, checks file sizes and source changes, and records completed work. It does not automatically create checksums. Use Check files afterward if you need them. Cancel stops further work; completed transfers remain recorded for a later retry."),
         p("Move a library to a new location", "h2"),
-        p("Select the library and choose <b>Move library</b>, then choose an empty destination. Close other clients using either location. Move is the default; Keep originals makes a copy instead. Compatible same-filesystem moves rename the library; other transfers use staged copies and source-state checks. Existing checksum records are retained."),
+        p("Select the library and choose <b>Move library</b>, then choose an empty destination. Close other clients using either location. The dialog shows Move library and Copy and keep originals as alternatives. Preview changes plans the paths; the final action asks for confirmation. Compatible same-filesystem moves rename the library; other transfers use staged copies and source-state checks. Existing checksum records are retained."),
         p("Moving a library does not normally read every file to calculate a checksum. Size checks catch incomplete copies, but not damage that leaves a file the same size. Use Check files when a full check is needed. If you resume an older job that requested checksum verification, that job keeps its original setting."),
         callout("If a move is interrupted", "Reconnect the original source and destination, then use Resume interrupted operation. Leave temporary files and recovery records in place. The app uses these records to continue safely; it keeps source files if required copies, backups or records fail, or if a destination changed unexpectedly. Installation and physical-drive tests remain incomplete for this preview.", "warn"),
         p("Scope of this preview", "h2"),
@@ -746,9 +746,9 @@ def build_story() -> list:
     ]
     story += steps(
         [
-            ("Add an inbox", "Choose a stable name and incoming folder. Enable subfolders for a varied legacy tree, then optionally select a master-library subfolder or camera override."),
+            ("Add a folder", "Choose Add folder, a readable name and an incoming location. Enable subfolders for a varied legacy tree, then optionally select a receiving-library subfolder or camera override."),
             ("Choose Copy or Move", "Leave Copy selected for normal use. Automatic imports are copy-only and run at the interval you choose. Move requires a manual action and confirmation."),
-            ("Review and import", "Select the inboxes you want to process. Check the source, destination, copy or move choice, backups and folder rules before confirming."),
+            ("Review and import", "Select the folders and choose Import new files. Check the source, destination, copy or move choice, backups and folder rules before confirming. More contains edit, open and forget actions."),
             ("Check the results", "Filter by pending, processed, failed or conflict. The table shows recent entries and the total number recorded. The app remembers each file's progress and records each manual run separately."),
         ]
     )
@@ -893,13 +893,13 @@ def build_story() -> list:
 
     story += chapter("12. Export captures for editing")
     story += [
-        p("Choose a library in <b>Libraries</b>, then <b>Export media</b>, or open <b>Library export</b> and select a saved library. This does not change the default import destination. Scanning reads metadata without changing source files. Matching stems and corresponding organized paths become capture sets; Photos, RAW, and Sidecars partitions are normalized during matching."),
+        p("Choose a library in <b>Libraries</b>, then <b>Export media</b>. This does not change the default import destination. Scanning reads metadata without changing source files. Matching stems and corresponding organized paths become capture sets; Photos, RAW, and Sidecars partitions are normalized during matching."),
     ]
     story += steps(
         [
             ("Scan the selected library", "Choose a saved library and select Scan library. Internal manifest and transfer-record folders are excluded. Changing libraries clears the old selection."),
             ("Filter media and dates", "Choose All media, Photos, RAW, Videos, or Sidecars. Enable Capture date range for inclusive start/end dates; missing capture metadata falls back to file modification time. Include matching sidecars is optional. For example, select Videos and the required dates, then Select all matching."),
-            ("Review detected sets", "Adjust the bracket/burst and interval thresholds, then review camera, capture time, rating, media types, and group labels."),
+            ("Review detected sets", "Expand Capture grouping to adjust bracket/burst and interval thresholds, complete-group selection and group folders. This section scrolls in smaller windows. Review camera, capture time, rating, media types and group labels."),
             ("Select work", "Select one or more captures, Select all matching, or expand a detected group. Group expansion stays inside the active media/date filters. Optional group subfolders keep bracketed and interval sequences together."),
             ("Export", "Choose a separate editing folder and review the confirmation, group folders, conflict suffix and space reserve. Export is copy-only with size/source-change checks. Actual filename conflicts are compared; matching exports may be reused and different versions receive a suffix. Records are written under .photocard-organizer/export-sessions."),
         ]
@@ -1005,6 +1005,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.12.0.dev1", "Navigation preview", "One sidebar, compact source actions, explicit move/copy choices and contextual settings controls. Source only."],
                 ["0.11.3.dev4", "Interface preview", "Direct Settings navigation, grouped backups and general options, one travel page. Not packaged or installed."],
                 ["0.11.3.dev3", "Interface preview", "Direct library actions, fewer tabs, simpler import options and compact reorganization. Not packaged or installed."],
                 ["0.11.3.dev2", "Testing preview", "Simpler navigation, manual file checks and fewer repeated reads. Local installer built; installation testing is blocked. Native crashes are not confirmed fixed."],
