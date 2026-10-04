@@ -2246,9 +2246,11 @@ class PhotoCardApp(QMainWindow):
         history_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         history_segments = list(self.config["identification"].get("history_folder_segments", []))
         history_row = QWidget()
-        history_row_layout = QHBoxLayout(history_row)
+        history_row_layout = QFormLayout(history_row)
         history_row_layout.setContentsMargins(0, 0, 0, 0)
-        history_row_layout.setSpacing(6)
+        history_row_layout.setVerticalSpacing(6)
+        history_row_layout.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        history_row_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.history_segment_combos: list[QComboBox] = []
         for index in range(3):
             value = history_segments[index] if index < len(history_segments) else ""
@@ -2260,7 +2262,7 @@ class PhotoCardApp(QMainWindow):
             )
             combo.currentIndexChanged.connect(self._update_history_preview)
             self.history_segment_combos.append(combo)
-            history_row_layout.addWidget(combo, 1)
+            history_row_layout.addRow(f"Level {index + 1}", combo)
         self.session_filename_edit = QLineEdit(
             self.config["identification"]["session_filename_template"]
         )
