@@ -38,11 +38,14 @@ especially while testing a new workflow.
 
 ### Current Preview
 
-`0.11.3.dev3` groups the interface into Libraries, Sources, Transfers, Settings
+`0.11.3.dev4` groups the interface into Libraries, Sources, Transfers, Settings
 and Help. Libraries has direct Add media, Export, Reorganize and Move actions.
 Less common maintenance lives in More. Import, export and file checks return to
 Libraries with a back button rather than a second row of tabs. Import offers
 visible Copy and Move choices, with advanced options collapsed.
+Settings pages are direct sidebar choices. Backups and free-space limits share
+one page, with records, retries and other advanced options tucked into expandable
+sections. Travel libraries and shared transfer folders now share one page, too.
 Use Check files when you want to check saved checksums, create missing ones, or
 compare a library with a connected backup. Normal transfers check that copying
 finished, file sizes match, and sources did not change. They do not detect
@@ -58,17 +61,20 @@ release or a confirmed fix for the native
 unchanged. Use the preview guide for current workflows. The technical reference
 below is retained for the published 0.11.2 release and differs in some places.
 
-[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev3-User-Guide.pdf)
+[Source preview guide](output/pdf/PhotoCardOrganizer-0.11.3.dev4-User-Guide.pdf)
 
 Version 0.11.2 is an unsigned testing release. Use independent backups.
 
 ![Libraries in the graphite and jade desktop theme](assets/screenshots/libraries.png)
 
 <details>
-<summary>Integrity and organization screens</summary>
+<summary>File checks, settings and travel screens</summary>
 
 ![Integrity checks and verified recovery](assets/screenshots/integrity.png)
 ![Organization options](assets/screenshots/organization.png)
+![Backup destinations and free-space settings](assets/screenshots/backups.png)
+![General settings](assets/screenshots/general.png)
+![Travel libraries and shared transfer folders](assets/screenshots/travel.png)
 
 Screenshots show the actual application with disposable example configuration.
 </details>

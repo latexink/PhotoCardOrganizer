@@ -239,6 +239,37 @@ def accent(button: QPushButton) -> QPushButton:
     return button
 
 
+def section_heading(title: str) -> QLabel:
+    heading = QLabel(title)
+    heading.setObjectName("sectionTitle")
+    return heading
+
+
+def collapsible_section(title: str, content: QWidget, *, expanded: bool = False) -> tuple[QWidget, QToolButton]:
+    section = QWidget()
+    layout = QVBoxLayout(section)
+    layout.setContentsMargins(0, 0, 0, 0)
+    layout.setSpacing(8)
+    button = QToolButton()
+    button.setObjectName("sectionHeader")
+    button.setText(title)
+    button.setCheckable(True)
+    button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+    button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    button.setToolTip(f"Show or hide {title.lower()}.")
+    layout.addWidget(button)
+    layout.addWidget(content)
+
+    def toggle(checked: bool) -> None:
+        content.setVisible(checked)
+        button.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
+
+    button.toggled.connect(toggle)
+    button.setChecked(expanded)
+    toggle(expanded)
+    return section, button
+
+
 class ScrollWheelRedirector(QObject):
     def __init__(self, area: QScrollArea):
         super().__init__(area)
@@ -447,6 +478,17 @@ class PhotoCardApp(QMainWindow):
             if app is not None:
                 section.setIcon(standard_icon(app, NAVIGATION_ICONS[page_names[0]]))
             self.navigation.addItem(section)
+            if section_name == "Settings":
+                section.setFlags(section.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                section.setData(Qt.ItemDataRole.UserRole, None)
+                for name in page_names:
+                    child = QListWidgetItem("    " + PAGE_LABELS.get(name, name))
+                    child.setData(Qt.ItemDataRole.UserRole, name)
+                    child.setSizeHint(QSize(0, 32))
+                    child.setToolTip(NAVIGATION_TOOLTIPS[name])
+                    self.navigation.addItem(child)
+                    self.navigation_items[name] = child
+                continue
             for name in page_names:
                 self.navigation_items[name] = section
         self.navigation.currentRowChanged.connect(self._navigation_changed)
@@ -558,17 +600,18 @@ class PhotoCardApp(QMainWindow):
         self.integrity_panel.refresh(selected["id"] if selected else None)
 
     def _build_general_page(self) -> None:
-        _page, layout = self._new_page("General options", "General options")
+        _page, layout = self._new_page("General options", "General")
         content = QWidget()
         form = QFormLayout(content)
         form.setContentsMargins(0, 0, 12, 16)
-        form.setVerticalSpacing(18)
+        form.setVerticalSpacing(12)
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.poll_spin = self._number_spin(
             self.config["monitor"]["poll_seconds"], 1, 3600, decimals=1, suffix=" sec"
         )
-        form.addRow("Connected-card check interval", self.poll_spin)
+        form.addRow(section_heading("Monitoring"))
+        form.addRow("Check connected cards every", self.poll_spin)
         self.idle_scan_spin = self._number_spin(
             self.config["monitor"].get("idle_scan_max_seconds", 300), 30, 86400, decimals=0, suffix=" sec"
         )
@@ -576,7 +619,12 @@ class PhotoCardApp(QMainWindow):
             "Unchanged cards are scanned less often, up to this interval. Scan now checks immediately. "
             "Higher values reduce disk activity but delay detecting new files on a still-connected source."
         )
-        form.addRow("Maximum idle-card scan interval", self.idle_scan_spin)
+        idle_options = QWidget()
+        idle_form = QFormLayout(idle_options)
+        idle_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        idle_form.addRow("Maximum idle-card scan interval", self.idle_scan_spin)
+        idle_section, self.monitor_options_button = collapsible_section("Advanced monitoring", idle_options)
+        form.addRow(idle_section)
         self.import_settings_button = QPushButton("Import settings")
         self._add_icon(self.import_settings_button, "open")
         self.import_settings_button.setToolTip("Merge portable settings from another computer after confirmation, retaining this computer's local paths.")
@@ -591,12 +639,17 @@ class PhotoCardApp(QMainWindow):
         settings_layout.addWidget(self.import_settings_button)
         settings_layout.addWidget(self.export_settings_button)
         settings_layout.addStretch(1)
-        form.addRow("Settings transfer", settings_row)
-        self.maintenance_button = QPushButton("Installation and maintenance")
+        form.addRow(section_heading("Settings file"))
+        form.addRow(settings_row)
+        self.maintenance_button = QPushButton("Manage installation")
         self._add_icon(self.maintenance_button, "settings")
         self.maintenance_button.setToolTip("View the detected installation and open install, repair, update, or uninstall options.")
         self.maintenance_button.clicked.connect(self._installation_maintenance)
-        form.addRow("Application", self.maintenance_button)
+        form.addRow(section_heading("Installation"))
+        maintenance_row = QHBoxLayout()
+        maintenance_row.addWidget(self.maintenance_button)
+        maintenance_row.addStretch(1)
+        form.addRow(maintenance_row)
         layout.addWidget(scrollable(content), 1)
 
     def _build_footer(self) -> QFrame:
@@ -1617,30 +1670,12 @@ class PhotoCardApp(QMainWindow):
         self._refresh_digest_inboxes()
 
     def _build_travel_sync_page(self) -> None:
-        _page, page_layout = self._new_page("Travel sync", "Travel sync")
-        self.travel_tabs = QTabWidget()
+        _page, page_layout = self._new_page("Travel sync", "Travel & shared folders")
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setContentsMargins(2, 2, 12, 16)
         layout.setSpacing(12)
-        summary = QFrame()
-        summary.setProperty("class", "preview")
-        summary_layout = QVBoxLayout(summary)
-        title = QLabel("DESKTOP MASTER WORKFLOW")
-        set_dynamic_class(title, "muted")
-        description = QLabel(
-            "Import cards into the laptop while away. When the laptop library is reachable "
-            "again, select it here and copy only new media into this desktop master. "
-            "Travel sync never removes source files or propagates deletions."
-        )
-        description.setWordWrap(True)
-        summary_layout.addWidget(title)
-        summary_layout.addWidget(description)
-        layout.addWidget(summary)
-
-        direct_label = QLabel("DIRECT LAPTOP OR MOUNTED-DRIVE SOURCES")
-        set_dynamic_class(direct_label, "muted")
-        layout.addWidget(direct_label)
+        layout.addWidget(section_heading("Travel libraries"))
         self.travel_table = QTableWidget(0, 5)
         self.travel_table.setHorizontalHeaderLabels(
             ("TRAVEL LIBRARY", "PATH", "CONNECTION", "MASTER FILES", "LAST SYNC")
@@ -1654,7 +1689,7 @@ class PhotoCardApp(QMainWindow):
         self.travel_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.travel_table.setAlternatingRowColors(True)
         self.travel_table.verticalHeader().setVisible(False)
-        self.travel_table.setFixedHeight(110)
+        self.travel_table.setFixedHeight(160)
         travel_header = self.travel_table.horizontalHeader()
         travel_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         travel_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
@@ -1670,33 +1705,34 @@ class PhotoCardApp(QMainWindow):
         )
         layout.addWidget(self.travel_table)
 
-        actions = QGridLayout()
-        self.add_travel_button = accent(QPushButton("Add laptop library"))
+        actions = QHBoxLayout()
+        self.add_travel_button = QPushButton("Add source")
         self._add_icon(self.add_travel_button, "add")
         self.add_travel_button.setToolTip(
             "Retain a laptop library, network share, or mounted travel drive for future return-home syncs."
         )
         self.add_travel_button.clicked.connect(self._add_travel_library)
-        self.edit_travel_button = QPushButton("Edit selected")
+        self.travel_more_button = QPushButton("More")
+        travel_menu = QMenu(self.travel_more_button)
+        self.travel_more_button.setMenu(travel_menu)
+        self.travel_more_button.setToolTip("Edit, open, or forget selected travel sources.")
+        self.edit_travel_button = travel_menu.addAction("Edit source...", self._edit_travel_library)
         self._add_icon(self.edit_travel_button, "edit")
         self.edit_travel_button.setToolTip(
             "Edit the selected travel source without changing its stable sync identity."
         )
-        self.edit_travel_button.clicked.connect(self._edit_travel_library)
-        self.open_travel_button = QPushButton("Open source")
+        self.open_travel_button = travel_menu.addAction("Open source folder", self._open_travel_library)
         self._add_icon(self.open_travel_button, "open")
         self.open_travel_button.setToolTip(
             "Open the selected laptop library when its path is available."
         )
-        self.open_travel_button.clicked.connect(self._open_travel_library)
-        self.remove_travel_button = QPushButton("Forget selected")
+        travel_menu.addSeparator()
+        self.remove_travel_button = travel_menu.addAction("Forget selected sources...", self._remove_travel_library)
         self._add_icon(self.remove_travel_button, "remove")
-        self.remove_travel_button.setProperty("danger", True)
         self.remove_travel_button.setToolTip(
             "Remove only the retained source profile. Laptop and desktop files remain unchanged."
         )
-        self.remove_travel_button.clicked.connect(self._remove_travel_library)
-        self.sync_travel_button = accent(QPushButton("Review and sync selected"))
+        self.sync_travel_button = accent(QPushButton("Copy new files"))
         self._add_icon(self.sync_travel_button, "refresh")
         self.sync_travel_button.setToolTip(
             "Review a copy-only summary, then reconcile every selected available travel library into the desktop master."
@@ -1704,38 +1740,16 @@ class PhotoCardApp(QMainWindow):
         self.sync_travel_button.clicked.connect(
             self._sync_selected_travel_libraries
         )
-        actions.addWidget(self.add_travel_button, 0, 0)
-        actions.addWidget(self.edit_travel_button, 0, 1)
-        actions.addWidget(self.open_travel_button, 0, 2)
-        actions.addWidget(self.remove_travel_button, 0, 3)
-        actions.addWidget(self.sync_travel_button, 1, 0, 1, 2)
-        actions.setColumnStretch(4, 1)
+        actions.addWidget(self.add_travel_button)
+        actions.addWidget(self.sync_travel_button)
+        actions.addWidget(self.travel_more_button)
+        actions.addStretch(1)
         self.travel_actions_layout = actions
         layout.addLayout(actions)
-        layout.addStretch(1)
-        self.travel_tabs.addTab(
-            scrollable(content), "Laptop libraries"
-        )
-
         hub_content = QWidget()
-        hub_page_layout = QVBoxLayout(hub_content)
-        hub_page_layout.setContentsMargins(2, 2, 12, 16)
-        hub_page_layout.setSpacing(12)
-        hub_summary = QFrame()
-        hub_summary.setProperty("class", "preview")
-        hub_summary_layout = QVBoxLayout(hub_summary)
-        hub_summary_title = QLabel("SHARED TRANSFER WORKFLOW")
-        set_dynamic_class(hub_summary_title, "muted")
-        hub_summary_text = QLabel(
-            "Use a removable drive, SMB/NAS share, or locally synchronized cloud "
-            "folder to publish travel sessions or catch new sessions in the master library."
-        )
-        hub_summary_text.setWordWrap(True)
-        hub_summary_layout.addWidget(hub_summary_title)
-        hub_summary_layout.addWidget(hub_summary_text)
-        hub_page_layout.addWidget(hub_summary)
-        hub_group = QGroupBox("Shared transfer hubs")
-        hub_layout = QVBoxLayout(hub_group)
+        hub_layout = QVBoxLayout(hub_content)
+        hub_layout.setContentsMargins(0, 8, 0, 0)
+        hub_layout.setSpacing(12)
         self.hub_table = QTableWidget(0, 6)
         self.hub_table.setHorizontalHeaderLabels(
             ("HUB", "ROLE", "FOLDER", "CHANNEL", "STATE", "CONFIRMATIONS")
@@ -1763,26 +1777,28 @@ class PhotoCardApp(QMainWindow):
         )
         hub_layout.addWidget(self.hub_table)
         hub_actions = QHBoxLayout()
-        add_hub = QPushButton("Add hub")
+        add_hub = QPushButton("Add shared folder")
         self._add_icon(add_hub, "add")
         add_hub.setToolTip(
             "Configure a USB drive, SMB/NAS path, mounted drive, or synchronized "
             "cloud folder as a publish or catch hub."
         )
         add_hub.clicked.connect(self._add_transfer_hub)
-        self.edit_hub_button = QPushButton("Edit selected")
+        self.hub_more_button = QPushButton("More")
+        hub_menu = QMenu(self.hub_more_button)
+        self.hub_more_button.setMenu(hub_menu)
+        self.hub_more_button.setToolTip("Edit or forget selected shared-folder profiles.")
+        self.edit_hub_button = hub_menu.addAction("Edit shared folder...", self._edit_transfer_hub)
         self._add_icon(self.edit_hub_button, "edit")
         self.edit_hub_button.setToolTip(
             "Edit the selected hub role, folder, producer channel, monitoring, or receipt settings."
         )
-        self.edit_hub_button.clicked.connect(self._edit_transfer_hub)
-        self.remove_hub_button = QPushButton("Forget selected")
+        hub_menu.addSeparator()
+        self.remove_hub_button = hub_menu.addAction("Forget selected shared folders...", self._remove_transfer_hubs)
         self._add_icon(self.remove_hub_button, "remove")
-        self.remove_hub_button.setProperty("danger", True)
         self.remove_hub_button.setToolTip(
             "Forget only these hub profiles. Shared media, sessions, receipts, and local files remain unchanged."
         )
-        self.remove_hub_button.clicked.connect(self._remove_transfer_hubs)
         self.run_hub_button = accent(QPushButton("Run selected hub"))
         self._add_icon(self.run_hub_button, "refresh")
         self.run_hub_button.setToolTip(
@@ -1790,15 +1806,16 @@ class PhotoCardApp(QMainWindow):
         )
         self.run_hub_button.clicked.connect(self._run_selected_hubs)
         hub_actions.addWidget(add_hub)
-        hub_actions.addWidget(self.edit_hub_button)
-        hub_actions.addWidget(self.remove_hub_button)
-        hub_actions.addStretch(1)
         hub_actions.addWidget(self.run_hub_button)
+        hub_actions.addWidget(self.hub_more_button)
+        hub_actions.addStretch(1)
         hub_layout.addLayout(hub_actions)
-        hub_page_layout.addWidget(hub_group)
-        hub_page_layout.addStretch(1)
-        self.travel_tabs.addTab(scrollable(hub_content), "Shared hubs")
-        page_layout.addWidget(self.travel_tabs, 1)
+        shared, self.shared_folders_button = collapsible_section(
+            "Shared transfer folders", hub_content, expanded=bool(self.transfer_hubs))
+        layout.addWidget(shared)
+        layout.addStretch(1)
+        self.travel_scroll_area = scrollable(content)
+        page_layout.addWidget(self.travel_scroll_area, 1)
         self._refresh_travel_libraries()
         self._refresh_transfer_hubs()
 
@@ -2222,9 +2239,10 @@ class PhotoCardApp(QMainWindow):
 
         history = QWidget()
         history_form = QFormLayout(history)
-        history_form.setContentsMargins(18, 18, 18, 18)
+        history_form.setContentsMargins(0, 0, 0, 0)
         history_form.setHorizontalSpacing(18)
         history_form.setVerticalSpacing(12)
+        history_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         history_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         history_segments = list(self.config["identification"].get("history_folder_segments", []))
         history_row = QWidget()
@@ -2235,6 +2253,8 @@ class PhotoCardApp(QMainWindow):
         for index in range(3):
             value = history_segments[index] if index < len(history_segments) else ""
             combo = self._segment_combo(value)
+            combo.setMinimumContentsLength(21)
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
             combo.setToolTip(
                 f"Session-record folder level {index + 1}. Levels are created inside the card's transfer-history folder."
             )
@@ -2258,11 +2278,11 @@ class PhotoCardApp(QMainWindow):
         self.history_preview_label.setWordWrap(True)
         history_preview_layout.addWidget(history_caption)
         history_preview_layout.addWidget(self.history_preview_label)
-        history_form.addRow("Session-record folder levels", history_row)
-        history_form.addRow("Transfer-session filename template", self.session_filename_edit)
-        history_form.addRow("Checksum-log filename template", self.checksum_filename_edit)
+        history_form.addRow("Record folders", history_row)
+        history_form.addRow("Session filename", self.session_filename_edit)
+        history_form.addRow("Checksum filename", self.checksum_filename_edit)
         history_form.addRow(history_preview_frame)
-        tabs.addTab(scrollable(history), "Transfer records")
+        self.history_settings_widget = history
         for kind in MEDIA_LABELS:
             self._update_media_preview(kind)
         self._update_history_preview()
@@ -2284,16 +2304,19 @@ class PhotoCardApp(QMainWindow):
         return spin
 
     def _build_safety_page(self) -> None:
-        _page, layout = self._new_page("Safety and location", "Safety and location")
-        tabs = QTabWidget()
-        layout.addWidget(tabs, 1)
+        _page, layout = self._new_page("Safety and location", "Backups & policies")
+        content = QWidget()
+        sections = QVBoxLayout(content)
+        sections.setContentsMargins(0, 0, 12, 16)
+        sections.setSpacing(12)
         safety = self.config["safety"]
         identification = self.config["identification"]
         local_history = self.config["local_history"]
 
         transfer = QWidget()
         transfer_form = QFormLayout(transfer)
-        transfer_form.setContentsMargins(18, 18, 18, 18)
+        transfer_form.setContentsMargins(0, 8, 0, 0)
+        transfer_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         transfer_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         destination_row = QWidget()
         destination_layout = QHBoxLayout(destination_row)
@@ -2342,8 +2365,24 @@ class PhotoCardApp(QMainWindow):
         self.require_local_log_check.setChecked(
             bool(local_history.get("require_before_source_delete", True))
         )
-        transfer_form.addRow("Default library", destination_row)
-        transfer_form.addRow("Default source-file handling", self.default_action_combo)
+        destination_row.setParent(transfer)
+        destination_row.hide()
+        self.default_action_combo.setParent(transfer)
+        self.default_action_combo.hide()
+        methods = QWidget()
+        methods_layout = QHBoxLayout(methods)
+        methods_layout.setContentsMargins(0, 0, 0, 0)
+        self.default_transfer_methods = QButtonGroup(self)
+        for index, name in enumerate(("Copy", "Move")):
+            button = QRadioButton(name)
+            button.setToolTip("Default for new card and folder imports. Existing card profiles keep their own choice.")
+            self.default_transfer_methods.addButton(button, index)
+            methods_layout.addWidget(button)
+        methods_layout.addStretch(1)
+        self.default_transfer_methods.button(self.default_action_combo.currentIndex()).setChecked(True)
+        self.default_transfer_methods.idClicked.connect(self.default_action_combo.setCurrentIndex)
+        self.default_action_combo.currentIndexChanged.connect(
+            lambda index: self.default_transfer_methods.button(index).setChecked(True))
         self.copy_verification_combo.hide()
         self.move_checksum_combo.hide()
         transfer_form.addRow("", self.shared_history_check)
@@ -2351,11 +2390,16 @@ class PhotoCardApp(QMainWindow):
         transfer_form.addRow("", self.local_history_enabled_check)
         transfer_form.addRow("Local session-record folder", local_row)
         transfer_form.addRow("", self.require_local_log_check)
-        tabs.addTab(scrollable(transfer), "Transfer safety")
+        records_layout = QVBoxLayout()
+        records_layout.addWidget(self.history_settings_widget)
+        transfer_form.addRow(section_heading("Record filenames"))
+        transfer_form.addRow(records_layout)
+        records, self.record_options_button = collapsible_section("Transfer records", transfer)
 
         policies = QWidget()
         policies_form = QFormLayout(policies)
-        policies_form.setContentsMargins(18, 18, 18, 18)
+        policies_form.setContentsMargins(0, 0, 0, 0)
+        policies_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         policies_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.conflict_policy_label = QLabel("Keep both files in Conflict review")
         self.conflict_policy_label.setWordWrap(True)
@@ -2416,27 +2460,52 @@ class PhotoCardApp(QMainWindow):
         self.retry_delay_spin = self._number_spin(
             safety.get("io_retry_delay_seconds", 1), 0, 30, suffix=" sec"
         )
-        policies_form.addRow("Same name, different content", self.conflict_policy_label)
+        self.conflict_policy_label.setParent(policies)
+        self.conflict_policy_label.hide()
         self.exact_duplicate_combo.hide()
         self.manual_duplicate_check.setChecked(False)
         self.manual_duplicate_check.hide()
-        policies_form.addRow("Conflict filename suffix", self.conflict_appendage_edit)
-        policies_form.addRow("Conflict review folder", self.conflict_folder_edit)
+        conflicts = QWidget()
+        conflicts_form = QFormLayout(conflicts)
+        conflicts_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        conflicts_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        conflicts_form.addRow("Conflict filename suffix", self.conflict_appendage_edit)
+        conflicts_form.addRow("Conflict review folder", self.conflict_folder_edit)
+        conflict_section, self.conflict_options_button = collapsible_section("Conflict folder and filenames", conflicts)
+        policies_form.addRow(section_heading("Free space"))
+        policies_form.addRow("Keep at least (percent)", self.minimum_percent_spin)
+        policies_form.addRow("Keep at least (gigabytes)", self.minimum_gb_spin)
         policies_form.addRow("Low-space response", self.space_policy_combo)
         policies_form.addRow("", self.manual_space_check)
         policies_form.addRow("Fallback libraries, in order", fallback_row)
-        policies_form.addRow("Free-space reserve (percent)", self.minimum_percent_spin)
-        policies_form.addRow("Free-space reserve (gigabytes)", self.minimum_gb_spin)
-        policies_form.addRow("Source low-space warning", self.source_warning_spin)
-        policies_form.addRow("Unreadable-file response", self.file_error_policy_combo)
-        policies_form.addRow("", self.manual_error_check)
-        policies_form.addRow("Automatic retries per file", self.retry_count_spin)
-        policies_form.addRow("Delay between retries", self.retry_delay_spin)
-        tabs.addTab(scrollable(policies), "Conflicts and space")
+        def update_fallback_visibility() -> None:
+            policies_form.setRowVisible(
+                fallback_row, combo_value(self.space_policy_combo) == "fallback_then_block")
+
+        self.space_policy_combo.currentIndexChanged.connect(update_fallback_visibility)
+        update_fallback_visibility()
+        errors = QWidget()
+        errors_form = QFormLayout(errors)
+        errors_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        errors_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        errors_form.addRow("Source low-space warning", self.source_warning_spin)
+        errors_form.addRow("Unreadable-file response", self.file_error_policy_combo)
+        errors_form.addRow("", self.manual_error_check)
+        errors_form.addRow("Automatic retries per file", self.retry_count_spin)
+        errors_form.addRow("Delay between retries", self.retry_delay_spin)
+        errors_section, self.error_options_button = collapsible_section("Retries and source warnings", errors)
+        def update_retry_availability() -> None:
+            retry = combo_value(self.file_error_policy_combo) == "retry_then_continue"
+            self.retry_count_spin.setEnabled(retry)
+            self.retry_delay_spin.setEnabled(retry)
+
+        self.file_error_policy_combo.currentIndexChanged.connect(update_retry_availability)
+        update_retry_availability()
 
         backups = QWidget()
         backups_layout = QVBoxLayout(backups)
-        backups_layout.setContentsMargins(18, 18, 18, 18)
+        backups_layout.setContentsMargins(0, 8, 0, 0)
+        backups_layout.addWidget(section_heading("Backup destinations"))
         self.replica_verification_combo = choice_combo(
             [("File size", "size")],
             "size",
@@ -2450,22 +2519,28 @@ class PhotoCardApp(QMainWindow):
         self.replica_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.replica_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.replica_table.verticalHeader().setVisible(False)
+        self.replica_table.setAlternatingRowColors(True)
+        self.replica_table.setFixedHeight(140)
         replica_header = self.replica_table.horizontalHeader()
         replica_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         replica_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         for column in range(2, 6):
             replica_header.setSectionResizeMode(column, QHeaderView.ResizeMode.ResizeToContents)
+        self.replica_table.setColumnHidden(3, True)
+        self.replica_table.setColumnHidden(4, True)
         backups_layout.addWidget(self.replica_table, 1)
         replica_actions = QHBoxLayout()
         add_replica = accent(QPushButton("Add destination"))
         self._add_icon(add_replica, "add")
-        add_replica.setToolTip("Add a verified backup or clone destination.")
+        add_replica.setToolTip("Add a backup or clone destination. Checksum comparisons are available under Check files.")
         add_replica.clicked.connect(self._add_replica)
         edit_replica = QPushButton("Edit selected")
+        self.edit_replica_button = edit_replica
         self._add_icon(edit_replica, "edit")
         edit_replica.setToolTip("Edit the selected backup destination and whether it is required.")
         edit_replica.clicked.connect(self._edit_replica)
         remove_replica = QPushButton("Remove selected")
+        self.remove_replica_button = remove_replica
         self._add_icon(remove_replica, "remove")
         remove_replica.setToolTip("Remove this destination from the configuration. Existing backup files are unchanged.")
         remove_replica.setProperty("danger", True)
@@ -2475,11 +2550,12 @@ class PhotoCardApp(QMainWindow):
         replica_actions.addWidget(remove_replica)
         replica_actions.addStretch(1)
         backups_layout.addLayout(replica_actions)
-        tabs.addTab(backups, "Backups and clones")
+        self.replica_table.itemSelectionChanged.connect(self._update_replica_action_state)
 
         location = QWidget()
         location_form = QFormLayout(location)
-        location_form.setContentsMargins(18, 18, 18, 18)
+        location_form.setContentsMargins(0, 8, 0, 0)
+        location_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         location_form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.location_enabled_check = QCheckBox("Resolve GPS coordinates to online place names")
         self.location_enabled_check.setChecked(
@@ -2495,7 +2571,22 @@ class PhotoCardApp(QMainWindow):
         location_form.addRow("", self.location_enabled_check)
         location_form.addRow("Provider", QLabel("Nominatim"))
         location_form.addRow("Online lookup identifier", self.location_user_agent_edit)
-        tabs.addTab(scrollable(location), "Location")
+        self.location_user_agent_edit.setEnabled(self.location_enabled_check.isChecked())
+        self.location_enabled_check.toggled.connect(self.location_user_agent_edit.setEnabled)
+        places, self.location_options_button = collapsible_section(
+            "Online place names", location, expanded=self.location_enabled_check.isChecked())
+        defaults = QFormLayout()
+        defaults.addRow("New imports", methods)
+        sections.addLayout(defaults)
+        sections.addWidget(backups)
+        sections.addWidget(policies)
+        sections.addWidget(conflict_section)
+        sections.addWidget(errors_section)
+        sections.addWidget(records)
+        sections.addWidget(places)
+        sections.addStretch(1)
+        self.safety_scroll_area = scrollable(content)
+        layout.addWidget(self.safety_scroll_area, 1)
         self._refresh_replicas()
 
     def _build_conflict_page(self) -> None:
@@ -2965,13 +3056,14 @@ class PhotoCardApp(QMainWindow):
         while self.area_tabs.count():
             self.area_tabs.removeTab(0)
         for page in pages:
-            tab = self.area_tabs.addTab(PAGE_LABELS.get(page, page))
+            tab = self.area_tabs.addTab(PAGE_LABELS.get(page, page).replace("&", "&&"))
             self.area_tabs.setTabData(tab, page)
             self.area_tabs.setTabToolTip(tab, NAVIGATION_TOOLTIPS[page])
         self.area_tabs.setCurrentIndex(pages.index(name))
         self.area_tabs.blockSignals(False)
         library_area = name in ("Libraries", "Import or merge", "Library export", "Integrity")
-        self.area_tabs.setVisible(not library_area and len(pages) > 1)
+        settings_area = name in ("Organization", "Safety and location", "General options")
+        self.area_tabs.setVisible(not library_area and not settings_area and len(pages) > 1)
         self.library_back_button.setVisible(library_area and name != "Libraries")
         if hasattr(self, "open_library_button"):
             self.open_library_button.setVisible(not library_area)
@@ -4449,6 +4541,7 @@ class PhotoCardApp(QMainWindow):
             and directory_available(str(selected[0]["root"]))
         )
         self.remove_travel_button.setEnabled(bool(selected))
+        self.travel_more_button.setEnabled(bool(selected))
         self.sync_travel_button.setEnabled(
             available and not self._manual_import_running
         )
@@ -4764,6 +4857,7 @@ class PhotoCardApp(QMainWindow):
         )
         self.edit_hub_button.setEnabled(one)
         self.remove_hub_button.setEnabled(bool(selected))
+        self.hub_more_button.setEnabled(bool(selected))
         self.run_hub_button.setEnabled(
             runnable and not self._manual_import_running
         )
@@ -6597,11 +6691,19 @@ class PhotoCardApp(QMainWindow):
                 selected_row = row
         if selected_row >= 0:
             self.replica_table.selectRow(selected_row)
+        self._update_replica_action_state()
+
+    def _update_replica_action_state(self) -> None:
+        selected = self._selected_replica() is not None
+        if hasattr(self, "edit_replica_button"):
+            self.edit_replica_button.setEnabled(selected)
+            self.remove_replica_button.setEnabled(selected)
 
     def _selected_replica(self) -> dict | None:
         if not hasattr(self, "replica_table"):
             return None
-        row = self.replica_table.currentRow()
+        selected = self.replica_table.selectionModel().selectedRows()
+        row = selected[0].row() if selected else -1
         item = self.replica_table.item(row, 0) if row >= 0 else None
         replica_id = str(item.data(Qt.ItemDataRole.UserRole) or "") if item else ""
         return next(

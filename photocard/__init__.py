@@ -1,3 +1,3 @@
 """Cross-platform photo card organizer."""
 
-__version__ = "0.11.3.dev3"
+__version__ = "0.11.3.dev4"

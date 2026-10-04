@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.11.3.dev4 - Settings and travel interface preview, 2026-10-04
+
+- Made Default folder rules, Backups & policies and General direct sidebar choices, removing the extra Settings tab row.
+- Consolidated backups and free-space limits on one scrolling page. Transfer records, conflict naming, retries and online place names expand when needed.
+- Moved transfer-record filename settings out of the media-organization tabs.
+- Made the default Copy/Move choice visible and kept saved values when unrelated or advanced controls are hidden.
+- Grouped General into monitoring, portable settings and installation, with advanced monitoring collapsed.
+- Combined travel libraries and shared transfer folders on one page; editing and forgetting sources live in More menus.
+- Disabled selection-only actions until an item is selected, corrected tab ampersands and updated screenshots and the PDF guide.
+- Transfer behavior and configuration schema are unchanged. Source preview only; no new installer or local installation.
+
 ## 0.11.3.dev3 - Interface preview, 2026-10-03
 
 - Made Add media, Export media, Reorganize library and Move library directly accessible in one Libraries toolbar.

@@ -70,6 +70,22 @@ QLabel#pageTitle {{
     font-size: 20pt;
     font-weight: 650;
 }}
+QLabel#sectionTitle {{
+    font-size: 12pt;
+    font-weight: 600;
+}}
+QToolButton#sectionHeader {{
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid {COLORS['border']};
+    border-radius: 0;
+    padding: 4px 0;
+    text-align: left;
+    font-weight: 600;
+}}
+QToolButton#sectionHeader:hover {{
+    background: {COLORS['surface']};
+}}
 QLabel#dialogTitle {{
     font-size: 15pt;
     font-weight: 650;

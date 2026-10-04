@@ -347,7 +347,7 @@ class QtWorkflowTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            len(NAVIGATION_SECTIONS),
+            len(NAVIGATION_SECTIONS) + 3,
             self.window.navigation.count(),
         )
         self.assertEqual("Libraries", self.window.navigation.item(0).text())
@@ -1015,20 +1015,98 @@ class QtWorkflowTests(unittest.TestCase):
             self.window.existing_structure_status_label.text(),
         )
 
-    def test_travel_sources_and_shared_hubs_have_separate_tabs(self) -> None:
-        self.assertEqual(2, self.window.travel_tabs.count())
-        self.assertEqual("Laptop libraries", self.window.travel_tabs.tabText(0))
-        self.assertEqual("Shared hubs", self.window.travel_tabs.tabText(1))
-        self.assertTrue(
-            self.window.travel_tabs.widget(0).isAncestorOf(
-                self.window.travel_table
-            )
-        )
-        self.assertTrue(
-            self.window.travel_tabs.widget(1).isAncestorOf(
-                self.window.hub_table
-            )
-        )
+    def test_travel_sources_and_shared_folders_share_one_page(self) -> None:
+        self.window.show_page("Travel sync")
+        page = self.window.stack.currentWidget()
+        self.assertIsNone(page.findChild(QTabWidget))
+        self.assertTrue(self.window.travel_scroll_area.isAncestorOf(self.window.travel_table))
+        self.assertTrue(self.window.travel_scroll_area.isAncestorOf(self.window.hub_table))
+        self.assertFalse(self.window.shared_folders_button.isChecked())
+        self.assertFalse(self.window.hub_table.isVisibleTo(page))
+        self.window.shared_folders_button.click()
+        self.app.processEvents()
+        self.assertTrue(self.window.hub_table.isVisibleTo(page))
+        self.assertFalse(self.window.travel_more_button.isEnabled())
+        self.assertFalse(self.window.hub_more_button.isEnabled())
+
+    def test_settings_pages_are_direct_sidebar_choices(self) -> None:
+        for name in ("Organization", "Safety and location", "General options"):
+            item = self.window.navigation_items[name]
+            self.assertEqual(name, item.data(Qt.ItemDataRole.UserRole))
+            self.window.navigation.setCurrentItem(item)
+            self.app.processEvents()
+            self.assertEqual(self.window.page_indexes[name], self.window.stack.currentIndex())
+            self.assertFalse(self.window.area_tabs.isVisibleTo(self.window))
+        self.assertIsNone(self.window.stack.widget(
+            self.window.page_indexes["Safety and location"]).findChild(QTabWidget))
+        organization_tabs = self.window.stack.widget(
+            self.window.page_indexes["Organization"]).findChild(QTabWidget)
+        self.assertEqual(5, organization_tabs.count())
+        self.window.resize(980, 660)
+        self.window.show_page("Safety and location")
+        self.window.record_options_button.setChecked(True)
+        for combo in self.window.history_segment_combos:
+            longest = max(range(combo.count()), key=lambda index:
+                combo.fontMetrics().horizontalAdvance(combo.itemText(index)))
+            combo.setCurrentIndex(longest)
+            self.app.processEvents()
+            self.assertLessEqual(combo.fontMetrics().horizontalAdvance(combo.currentText()),
+                                 combo.lineEdit().contentsRect().width() - 8)
+
+    def test_collapsed_settings_preserve_values_without_dirtying_config(self) -> None:
+        before = self.window._collect_config()
+        for control in (self.window.monitor_options_button, self.window.record_options_button,
+                        self.window.conflict_options_button, self.window.error_options_button,
+                        self.window.location_options_button):
+            control.click()
+            control.click()
+        self.assertEqual(before, self.window._collect_config())
+        self.assertFalse(self.window._settings_dirty)
+        self.assertTrue(self.window.record_options_button.parentWidget().isAncestorOf(
+            self.window.session_filename_edit))
+
+    def test_default_transfer_radios_stay_in_sync_with_saved_controls(self) -> None:
+        self.window.default_transfer_methods.button(1).click()
+        self.assertEqual("move", self.window._collect_config()["safety"]["default_action"])
+        self.assertTrue(self.window._settings_dirty)
+        self.window.default_action_combo.setCurrentIndex(0)
+        self.assertTrue(self.window.default_transfer_methods.button(0).isChecked())
+        self.assertEqual("copy", self.window._collect_config()["safety"]["default_action"])
+
+    def test_conditional_policy_controls_retain_disabled_values(self) -> None:
+        self.window.show_page("Safety and location")
+        self.window.fallback_destinations_edit.setText(str(self.base / "fallback"))
+        self.window.space_policy_combo.setCurrentIndex(self.window.space_policy_combo.findData("block"))
+        self.assertFalse(self.window.fallback_destinations_edit.isVisibleTo(self.window))
+        self.assertEqual([str(self.base / "fallback")],
+                         self.window._collect_config()["safety"]["fallback_destination_roots"])
+        self.window.space_policy_combo.setCurrentIndex(
+            self.window.space_policy_combo.findData("fallback_then_block"))
+        self.assertTrue(self.window.fallback_destinations_edit.isVisibleTo(self.window))
+        self.window.retry_count_spin.setValue(4)
+        self.window.file_error_policy_combo.setCurrentIndex(
+            self.window.file_error_policy_combo.findData("continue"))
+        self.assertFalse(self.window.retry_count_spin.isEnabled())
+        self.assertEqual(4, self.window._collect_config()["safety"]["io_retry_count"])
+        self.window.file_error_policy_combo.setCurrentIndex(
+            self.window.file_error_policy_combo.findData("retry_then_continue"))
+        self.assertTrue(self.window.retry_count_spin.isEnabled())
+        self.assertEqual(4, self.window.retry_count_spin.value())
+        self.assertFalse(self.window.location_user_agent_edit.isEnabled())
+        self.window.location_enabled_check.setChecked(True)
+        self.assertTrue(self.window.location_user_agent_edit.isEnabled())
+
+    def test_backup_actions_require_selection(self) -> None:
+        self.assertFalse(self.window.edit_replica_button.isEnabled())
+        self.assertFalse(self.window.remove_replica_button.isEnabled())
+        self.window.replica_destinations.append({"id": "test-backup", "name": "Test backup",
+            "root": str(self.base / "backup"), "enabled": True, "required": True})
+        self.window._refresh_replicas()
+        self.window.replica_table.selectRow(0)
+        self.assertTrue(self.window.edit_replica_button.isEnabled())
+        self.assertTrue(self.window.remove_replica_button.isEnabled())
+        self.window.replica_table.clearSelection()
+        self.assertFalse(self.window.edit_replica_button.isEnabled())
 
     def test_changelog_opens_inside_application(self) -> None:
         with (
@@ -1227,14 +1305,9 @@ class QtWorkflowTests(unittest.TestCase):
         self.window.resize(980, 660)
         self.window.show_page("Safety and location")
         self.app.processEvents()
-        page = self.window.stack.widget(
-            self.window.page_indexes["Safety and location"]
-        )
-        tabs = page.findChild(QTabWidget)
-        self.assertIsNotNone(tabs)
-        tabs.setCurrentIndex(1)
+        self.window.error_options_button.setChecked(True)
         self.app.processEvents()
-        area = tabs.currentWidget()
+        area = self.window.safety_scroll_area
         scrollbar = area.verticalScrollBar()
         self.assertGreater(scrollbar.maximum(), 0)
         original_value = self.window.minimum_percent_spin.value()

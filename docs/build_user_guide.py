@@ -454,7 +454,7 @@ def build_story() -> list:
     if ".dev" in VERSION:
         diagnostic_pages += [p(f"About this preview: {VERSION}", "h1"),
                   p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
-                  p("This guide describes the dev3 interface preview, which has not been packaged or installed. The earlier dev2 build passed startup and Defender checks, but Sandbox blocked its isolated installation tests. Linux and physical USB-drive testing remain outstanding. The installed app may still show the older layout. See docs/VALIDATION-0.11.3.dev2.md for the earlier build's recorded results."),
+                  p(f"This guide describes the {VERSION} interface preview, which has not been packaged or installed. The earlier dev2 build passed startup and Defender checks, but Sandbox blocked its isolated installation tests. Linux and physical USB-drive testing remain outstanding. The installed app may still show the older layout. See docs/VALIDATION-0.11.3.dev2.md for the earlier build's recorded results."),
                   p("The main areas are Libraries, Sources, Transfers, Settings and Help. Use Libraries > Check files for optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Keep originals if you want a copy instead."),
                   p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
                   p("The separate 0.11.3.dev1 diagnostic ZIP is still available for crash investigation. If you are using that older package, extract it and start PhotoCardOrganizer-Diagnostic.bat to keep its settings separate. It does not contain an installer and does not include all the changes described here."),
@@ -556,12 +556,12 @@ def build_story() -> list:
             "When ExifTool is available on PATH, it expands RAW and video metadata support. Files still transfer without it; unavailable fields fall back to other metadata readers, file time, or the retained card profile.",
         ),
         p("Installation maintenance", "h2"),
-        p("Keep the downloaded Installer file as the single Windows maintenance entry point. Running it again detects the installed package and offers repair/upgrade or uninstall. General options > Installation and maintenance reports the detected installation and opens the registered uninstaller; Windows Installed apps and the Start Menu expose the same uninstall path. The uninstaller preserves per-user settings, profiles, and logs by default and never targets imported media or transfer records. Developer environments expose their local scripts."),
+        p("Keep the downloaded Installer file as the single Windows maintenance entry point. Running it again detects the installed package and offers repair/upgrade or uninstall. Settings > General > Manage installation reports the detected installation and opens the registered uninstaller; Windows Installed apps and the Start Menu expose the same uninstall path. The uninstaller preserves per-user settings, profiles, and logs by default and never targets imported media or transfer records. Developer environments expose their local scripts."),
         PageBreak(),
     ]
 
     story += chapter("2. Find your way around")
-    story += [Image(str(ROOT / "assets/screenshots/libraries.png"), width=448, height=280), Spacer(1, 8)]
+    story += [Image(str(ROOT / "assets/screenshots/libraries.png"), width=400, height=250), Spacer(1, 8)]
     story += [
         data_table(
             ["Menu section", "Page", "Purpose"],
@@ -572,7 +572,8 @@ def build_story() -> list:
                 ["Sources", "Watched folders / Travel", "Incoming folders and laptop/shared-folder transfers using mounted destinations."],
                 ["Transfers", "Overview / History", "Connected sources, current activity and error events."],
                 ["Transfers", "Conflicts", "Search, compare preserved files side by side and update review status."],
-                ["Settings", "Rules / Policies", "Choose folder layouts, file types, backups and how much free space to leave."],
+                ["Settings", "Default folder rules", "Choose folder layouts, filename patterns and file types."],
+                ["Settings", "Backups & policies", "Backup destinations, free-space limits and expandable advanced options."],
                 ["Settings", "General", "Monitoring interval, portable settings and installation maintenance."],
                 ["Help", "Help & about", "PDF manual, changelog, diagnostics, version and project credits."],
             ],
@@ -580,6 +581,7 @@ def build_story() -> list:
         ),
         Spacer(1, 10),
         p("Libraries puts Add media, Export media, Reorganize library and Move library in one toolbar. Open folder and Check files act on the selected library. More contains default-library preferences, size refresh, metadata maintenance, resume and forget actions. Import, export and file checks have a Libraries back button instead of duplicate tabs. Progress and Save settings remain visible below each page."),
+        p("Settings pages are in the sidebar. Backups & policies keeps backups and free space visible, with conflict naming, retries, records and place names in expandable sections. General groups monitoring, settings files and installation. Collapsing advanced options keeps their saved values."),
         PageBreak(),
     ]
 
@@ -795,7 +797,7 @@ def build_story() -> list:
 
     story += chapter("8. Backups, clones, and free space")
     story += [
-        p("Add destinations under Settings > Backups & policies > Backups and clones. Each can be enabled, required or optional and receive matching history. Conflicting backup files remain unchanged; the incoming version is preserved locally for review."),
+        p("Under Settings > Backups & policies, choose Add destination in Backup destinations. Select a destination to enable Edit selected or Remove selected. Each can be enabled, required or optional and receive matching history. Conflicting backup files remain unchanged; the incoming version is preserved locally for review."),
         data_table(
             ["Destination type", "Import behavior", "Move behavior"],
             [
@@ -839,6 +841,7 @@ def build_story() -> list:
 
     story += chapter("10. Transfer records and multiple computers")
     story += [
+        p("Open Settings > Backups & policies and expand Transfer records to choose portable and local history, record folders and filename patterns. These options no longer sit beside the photo and video folder-rule tabs."),
         p("Each transfer session receives its own JSON Lines record and, when cryptographic verification is used, a separate checksum file. Session names can include date, card, computer, session, instance, library, card ID, and algorithm tokens. Library metadata and application-owned records use the canonical .photocard-organizer folder."),
         code("CARD_ROOT/.photocard/transfers/2026/2026-07/\n  2026-07-12_14-30-05_R5-Card_Studio-PC_a1b2c3d4.jsonl\n  2026-07-12_14-30-05_R5-Card_Studio-PC_a1b2c3d4.sha256"),
         p("Matching local records", "h2"),
@@ -855,9 +858,9 @@ def build_story() -> list:
         PageBreak(),
     ]
 
-    story += chapter("11. Travel sync and shared transfer hubs")
+    story += chapter("11. Travel libraries and shared folders")
     story += [
-        p("<b>Travel sync</b> provides two copy-only ways to reconcile a laptop or removable library with the main desktop library. Use the Laptop libraries tab for a directly reachable source and Shared hubs for USB, SMB/NAS, or locally synchronized cloud-folder transport."),
+        p("<b>Sources > Travel & shared folders</b> provides two copy-only ways to bring files home. Under Travel libraries, choose Add source for a directly reachable laptop share or removable library, select it, then choose Copy new files and review the confirmation. More contains edit, open-folder and forget actions. Expand Shared transfer folders for USB, SMB/NAS or locally synchronized cloud-folder transport. Saved shared-folder profiles make that section open by default."),
         data_table(
             ["Method", "Best use", "Behavior"],
             [
@@ -870,7 +873,7 @@ def build_story() -> list:
     ]
     story += steps(
         [
-            ("Configure the laptop", "Add a hub on the USB drive with role Publish and a unique channel name, such as Field-Laptop. Card imports can copy to it as a backup destination. Use Publish now to send files imported while the drive was disconnected."),
+            ("Configure the laptop", "Expand Shared transfer folders and choose Add shared folder on the USB drive with role Publish and a unique channel name, such as Field-Laptop. Card imports can copy to it as a backup destination. Use Publish now to send files imported while the drive was disconnected."),
             ("Wait for completion", "Confirm the publish progress and session record finish before using the operating system's safe-eject command. Source and laptop-library files are never deleted by hub publication."),
             ("Configure the desktop", "Attach the USB drive, add the same hub folder with role Catch, and select Catch new sessions. The desktop applies its own organization rules to the incoming producer channel."),
             ("Check that files arrived", "After the desktop records the import, it saves a completion record locally and in the shared folder. Catching the same unchanged session again should import no new files."),
@@ -1002,6 +1005,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
+                ["0.11.3.dev4", "Interface preview", "Direct Settings navigation, grouped backups and general options, one travel page. Not packaged or installed."],
                 ["0.11.3.dev3", "Interface preview", "Direct library actions, fewer tabs, simpler import options and compact reorganization. Not packaged or installed."],
                 ["0.11.3.dev2", "Testing preview", "Simpler navigation, manual file checks and fewer repeated reads. Local installer built; installation testing is blocked. Native crashes are not confirmed fixed."],
                 ["0.11.2", "2026-09-16", "On-demand library sizes, drive capacity visibility, and optional SHA-256 migration verification."],

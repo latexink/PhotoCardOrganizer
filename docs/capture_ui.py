@@ -35,6 +35,11 @@ def main():
         config = normalize_config({"destination_root": str(base / "Photo Library"),
             "identification": {"auto_detect": False, "configured_roots": []},
             "local_history": {"directory": str(base / "history")},
+            "replica_destinations": [{"id": "archive", "name": "Archive drive",
+                "root": str(base / "Backup"), "required": True}],
+            "travel_libraries": [{"id": "field", "name": "Field laptop", "root": ""}],
+            "transfer_hubs": [{"id": "shared", "name": "Return-home USB", "root": "",
+                "role": "catch", "producer_channel": "Field-Laptop"}],
             "monitor": {"poll_seconds": 3600}})
         window = PhotoCardApp(config, base / "config.json")
         try:
@@ -46,8 +51,25 @@ def main():
                     app.processEvents()
                     slug = page.lower().replace(" ", "-")
                     window.grab().save(str(audit / f"{slug}-{width}.png"))
-                    if width == 1440 and page in {"Libraries", "Integrity", "Organization"}:
-                        window.grab().save(str(output / f"{slug}.png"))
+                    asset_names = {"Libraries": "libraries", "Integrity": "integrity",
+                        "Organization": "organization", "Safety and location": "backups",
+                        "General options": "general", "Travel sync": "travel"}
+                    if width == 1440 and page in asset_names:
+                        window.grab().save(str(output / f"{asset_names[page]}.png"))
+                window.show_page("Safety and location")
+                window.record_options_button.setChecked(True)
+                window.error_options_button.setChecked(True)
+                window.conflict_options_button.setChecked(True)
+                window.location_options_button.setChecked(True)
+                app.processEvents()
+                area = window.safety_scroll_area
+                area.verticalScrollBar().setValue(area.verticalScrollBar().maximum())
+                app.processEvents()
+                window.grab().save(str(audit / f"backup-advanced-{width}.png"))
+                for button in (window.record_options_button, window.error_options_button,
+                               window.conflict_options_button, window.location_options_button):
+                    button.setChecked(False)
+                area.verticalScrollBar().setValue(0)
                 window.show_page("Import or merge")
                 window.existing_source_edit.setText(str(base / "Incoming"))
                 window._set_existing_step(1)
