@@ -55,16 +55,16 @@ finished, file sizes match, and sources did not change. They do not detect
 corruption that leaves the file size unchanged. Files with different names are
 not automatically searched for identical contents across the entire library.
 
-This interface preview has not been built or installed. The earlier dev2 installer
-passed packaged startup and Defender scans, but Sandbox Application Control
-blocked isolated installation testing. See the
-[validation record](docs/VALIDATION-0.11.3.dev2.md). This is not a published
-release or a confirmed fix for the native
-0.11.2 crashes. Existing release downloads and the dev1 diagnostic package remain
-unchanged. Use the preview guide for current workflows. The technical reference
+This preview has a Windows testing installer. Packaged startup and Defender
+checks are recorded in the [validation record](docs/VALIDATION-0.12.0.dev1.md).
+Installer lifecycle testing remains incomplete because Sandbox Application
+Control blocked the earlier isolated harness; protection was not bypassed.
+This is not a confirmed fix for the native 0.11.2 crashes. Previous releases and
+the dev1 diagnostic package remain available. Use disposable media for testing
+and the preview guide for current workflows. The technical reference
 below is retained for the published 0.11.2 release and differs in some places.
 
-[Source preview guide](output/pdf/PhotoCardOrganizer-0.12.0.dev1-User-Guide.pdf)
+[Preview user guide](output/pdf/PhotoCardOrganizer-0.12.0.dev1-User-Guide.pdf)
 
 Version 0.11.2 is an unsigned testing release. Use independent backups.
 

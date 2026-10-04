@@ -10,7 +10,7 @@
 - Made Move and Copy explicit alternatives when relocating a library, retaining final confirmation and recovery behaviour.
 - Grouped export capture options in an expandable, scrollable section and removed decorative section frames.
 - Aligned page and dialog names, updated screenshots and the versioned PDF guide.
-- Source preview only. Transfer rules and saved data formats are unchanged; no new installer or local installation.
+- Windows testing installer available. Transfer rules and saved data formats are unchanged; the user's local installation remains untouched. Installer lifecycle validation is incomplete.
 
 ## 0.11.3.dev4 - Settings and travel interface preview, 2026-10-04
 

@@ -1,5 +1,10 @@
 # Interface review: 0.12.0.dev1
 
+Packaging follow-up: a Windows testing installer is now available. See
+[build validation](VALIDATION-0.12.0.dev1.md) for packaged startup, Defender scans
+and the unresolved installer lifecycle gap. The source-only pass below records
+the preceding interface review.
+
 2026-10-04. Source preview only. No installer or installed application changed.
 
 ## Workflow conventions

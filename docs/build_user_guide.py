@@ -454,7 +454,7 @@ def build_story() -> list:
     if ".dev" in VERSION:
         diagnostic_pages += [p(f"About this preview: {VERSION}", "h1"),
                   p("Not a confirmed fix for the 0.11.2 crashes. Use disposable media only."),
-                  p(f"This guide describes the {VERSION} interface preview, which has not been packaged or installed. The earlier dev2 build passed startup and Defender checks, but Sandbox blocked its isolated installation tests. Linux and physical USB-drive testing remain outstanding. The installed app may still show the older layout. See docs/VALIDATION-0.11.3.dev2.md for the earlier build's recorded results."),
+                  p(f"This guide describes the {VERSION} testing preview. Packaging checks and remaining limitations are recorded in the release's validation notes. Windows Sandbox Application Control blocked the earlier isolated installer tests; protection was not bypassed. Linux package, physical USB-drive and installer lifecycle testing remain incomplete. Source tests and packaged startup are not substitutes for those checks. Your installed app may still show an older layout until you choose to install this preview."),
                   p("Use the sidebar for Libraries, Sources, Transfers, Settings and Help. Libraries > Check files provides optional checksum checks. Card and folder imports default to Copy. Move library defaults to Move; select Copy and keep originals to leave a separate library behind."),
                   p("Help &amp; about contains detailed logging and report export. Full-memory capture requires separate consent in the launcher and a Microsoft CDB debugger. Dumps stay local, can be large, and may contain private data. Do not upload them automatically."),
                   p("The separate 0.11.3.dev1 diagnostic ZIP is still available for crash investigation. If you are using that older package, extract it and start PhotoCardOrganizer-Diagnostic.bat to keep its settings separate. It does not contain an installer and does not include all the changes described here."),
@@ -1005,7 +1005,7 @@ def build_story() -> list:
         data_table(
             ["Version", "Released", "Highlights"],
             [
-                ["0.12.0.dev1", "Navigation preview", "One sidebar, compact source actions, explicit move/copy choices and contextual settings controls. Source only."],
+                ["0.12.0.dev1", "Testing preview", "One sidebar, compact source actions, explicit move/copy choices and contextual settings controls. Windows installer; lifecycle checks incomplete."],
                 ["0.11.3.dev4", "Interface preview", "Direct Settings navigation, grouped backups and general options, one travel page. Not packaged or installed."],
                 ["0.11.3.dev3", "Interface preview", "Direct library actions, fewer tabs, simpler import options and compact reorganization. Not packaged or installed."],
                 ["0.11.3.dev2", "Testing preview", "Simpler navigation, manual file checks and fewer repeated reads. Local installer built; installation testing is blocked. Native crashes are not confirmed fixed."],
